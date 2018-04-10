@@ -14,7 +14,7 @@ sigma_x = .5 * ones(L, 1);
 tau = 5 * ones(L, 1);
 
 % Fraction of missing (nan) data
-datadrop = 1;
+datadrop = .3;
 
 %% Generate ground truth
 
@@ -36,19 +36,8 @@ data(rand(size(data)) < datadrop) = nan;
 
 % K defines cov across time for each latent
 Kfull = blkdiag(K{:});
-% Gamma defines cov across latents at each time point. Gamma is constructed by repeating CDC (the
-% cov across latents) 'T' times by multiplying with eye(T) then block-concatenating each eye term
-% together.
-Gamma = getGammaWithMissingData(data, diag(D), C);
-Proj = getYProjectionWithMissingData(data, diag(D), C);
-% Posterior mean and precision matrix
-precision_inferred = (inv(Kfull) + Gamma);
-mu_inferred = precision_inferred \ Proj;
-% Posterior covariance matrix
-cov_inferred = inv(precision_inferred);
 
-% ensure symmetry
-cov_inferred = (cov_inferred + cov_inferred') / 2;
+[mu_inferred, cov_inferred] = inferX(data, diag(D), C, Kfull);
 
 %% Plot result
 
@@ -56,7 +45,7 @@ cov_inferred = (cov_inferred + cov_inferred') / 2;
 figure; hold on;
 colors = lines(L);
 for i=1:20
-    x = reshape(mvnrnd(mu_inferred, cov_inferred), [T, L]);
+    x = reshape(mvnrnd(mu_inferred(:), cov_inferred), [T, L]);
     for l=1:L
         plot(times, x(:,l), 'Color', colors(l,:));
     end

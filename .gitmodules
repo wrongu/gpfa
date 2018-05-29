@@ -1,0 +1,3 @@
+[submodule "util/block-matrix-inverse-tools"]
+	path = util/block-matrix-inverse-tools
+	url = git@github.com:wrongu/block-matrix-inverse-tools.git

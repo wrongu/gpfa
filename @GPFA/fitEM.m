@@ -14,14 +14,14 @@ for itr=1:maxIters
     [newObj, Qs(itr)] = gpfaObj.emStep(fixedParams);
     elapsed = toc(tstart);
     
-    fprintf('EM iteration %d/%d\tQ = %.2es\ttime per iteration = %.2fs\n', ...
-        itr, maxIters, Qs(itr), elapsed / itr);
-    
     newParamValues = concatAllParams(newObj, allParams);
     delta = norm(lastParamValues - newParamValues);
     if delta < convergenceTol
         break
     end
+    
+    fprintf('EM iteration %d/%d\tQ = %.2es\tdelta = %.2e\ttime per iteration = %.2fs\n', ...
+        itr, maxIters, Qs(itr), delta, elapsed / itr);
     
     gpfaObj = newObj;
     lastParamValues = newParamValues;

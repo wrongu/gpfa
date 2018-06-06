@@ -136,7 +136,7 @@ classdef GPFA
             end
             
             if isempty(gpfaObj.taus)
-                gpfaObj.taus = 5 * effectiveDt * ones(1, gpfaObj.L);
+                gpfaObj.taus = 10 * effectiveDt * ones(1, gpfaObj.L);
             end
             
             if isempty(gpfaObj.sigs)
@@ -145,7 +145,7 @@ classdef GPFA
             
             if isempty(gpfaObj.rhos)
                 % Note: small nonzero rho helps numerical stability
-                gpfaObj.rhos = .05 * ones(1, gpfaObj.L);
+                gpfaObj.rhos = zeros(1, gpfaObj.L);
             end
             
             %% Check for and apply preprocessing transformations
@@ -286,7 +286,7 @@ classdef GPFA
             k = gpfaObj.K;
             G = gpfaObj.Gamma;
             I = speye(size(G));
-            blocks = gpfaObj.T * ones(1, gpfaObj.L);
+%             blocks = gpfaObj.T * ones(1, gpfaObj.L);
 %             gpfaObj.Cov = k - k * G * blockmldivide((I + k * G), blocks, k); 
             gpfaObj.Cov = k - k * G * ((I + k * G) \ k); 
         end

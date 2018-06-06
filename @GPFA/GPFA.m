@@ -183,6 +183,8 @@ classdef GPFA
         
         %% Inference
         [mu_x, sigma_x] = inferX(gpfaObj, Y)
+        [mu_Y] = predictY(gpfaObj)
+        [Y] = sampleY(gpfaObj, nSamples)
         
         %% Learning
         [gpfaObj, Q] = emStep(gpfaObj, fixedParams)

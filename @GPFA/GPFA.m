@@ -104,7 +104,7 @@ classdef GPFA
             assert(isempty(gpfaObj.C) || all(size(gpfaObj.C) == [gpfaObj.N gpfaObj.L]), '''C'' must be size [N x L]');
             assert(isempty(gpfaObj.R) || all(size(gpfaObj.R) == [gpfaObj.N 1]), '''R'' must be size [N x 1]');
             assert(isempty(gpfaObj.b) || all(size(gpfaObj.b) == [gpfaObj.N 1]), '''b'' must be size [N x 1]');
-            assert(isempty(gpfaObj.times) || length(gpfaObj.times) == gpfaObj.T, '''times'' must be size [N x 1]');
+            assert(isempty(gpfaObj.times) || length(gpfaObj.times) == gpfaObj.T, '''times'' must be size [T x 1]');
             assert(isempty(gpfaObj.dt) || isscalar(gpfaObj.dt), '''dt'' must be a scalar');
             
             if ~isempty(gpfaObj.S)
@@ -133,7 +133,7 @@ classdef GPFA
             else
                 effectiveDt = gpfaObj.dt;
                 gpfaObj.isKernelToeplitz = true;
-                gpfaObj.times = (1:gpfaObj.T) * gpfaObj.dt;
+                gpfaObj.times = (1:gpfaObj.T)' * gpfaObj.dt;
             end
             
             if isempty(gpfaObj.taus)

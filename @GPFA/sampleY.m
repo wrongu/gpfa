@@ -1,6 +1,8 @@
-function [Y] = sampleY(gpfaObj, nSamples)
+function [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x)
 
-[mu_x, sigma_x] = gpfaObj.inferX();
+if ~exist('mu_x', 'var')
+    [mu_x, sigma_x] = gpfaObj.inferX();
+end
 
 % Get [TL x nSamples] instances of x. It helps to avoid errors if we doubly ensure that sigma_x is
 % symmetric.

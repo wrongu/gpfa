@@ -1,6 +1,6 @@
-function [mu_Y] = predictY(gpfaObj)
+function [mu_Y] = predictY(gpfaObj, mu_x)
 
-mu_x = gpfaObj.inferX();
+if ~exist('mu_x', 'var'), mu_x = gpfaObj.inferX(); end
 mu_Y = gpfaObj.b' + mu_x * gpfaObj.C';
 
 if ~isempty(gpfaObj.S)

@@ -133,6 +133,7 @@ classdef GPFA
             else
                 effectiveDt = gpfaObj.dt;
                 gpfaObj.isKernelToeplitz = true;
+                gpfaObj.times = (1:gpfaObj.T) * gpfaObj.dt;
             end
             
             if isempty(gpfaObj.taus)
@@ -183,8 +184,8 @@ classdef GPFA
         
         %% Inference
         [mu_x, sigma_x] = inferX(gpfaObj, Y)
-        [mu_Y] = predictY(gpfaObj)
-        [Y] = sampleY(gpfaObj, nSamples)
+        [mu_Y] = predictY(gpfaObj, mu_x)
+        [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x)
         
         %% Learning
         [gpfaObj, Q] = emStep(gpfaObj, fixedParams)

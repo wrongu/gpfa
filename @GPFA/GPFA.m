@@ -25,8 +25,8 @@ classdef GPFA
     properties% (Access = protected)
         %% --- Metadata ---
         isKernelToeplitz % whether K matrix has toeplitz structure (requires equal-spaced time points)
-%         preTransform     % preprocessing applied to data (e.g. @sqrt to square-root transform spike counts)
-%         postTransform    % the inverse of preTransform
+        % preTransform     % preprocessing applied to data (e.g. @sqrt to square-root transform spike counts)
+        % postTransform    % the inverse of preTransform
         %% --- Precomputed matrices ---
         K     % [TL x TL] (sparse matrix) kernel-based covariance for (flattened) latents
         Gamma % [TL x TL] (sparse matrix) Kronecker of (C'*inv(R)*C) and eye(T), adjusted for missing data.
@@ -57,24 +57,24 @@ classdef GPFA
                 gpfaObj.Y = varargin{1};
                 argStart = 2;
                 requiredArgs = {'L'};
-            
+                
                 if ~ischar(varargin{2})
                     gpfaObj.L = varargin{2};
                     argStart = 3;
                     requiredArgs = {};
                 end
             end
-
+            
             %% Ensure that Y and L are given somewhere
             missingArgs = setdiff(requiredArgs, varargin(cellfun(@(v) ischar(v), varargin)));
             if ~isempty(missingArgs)
                 error('Missing reqiured input(s): %s', strjoin(missingArgs, ', '));
             end
-
+            
             %% Get all other fields from varargin and initialize everything
             gpfaObj = gpfaObj.setFields(varargin{argStart:end});
         end
-
+        
         function gpfaObj = setFields(gpfaObj, varargin)
             %% Copy fields from varargin
             allProps = properties(gpfaObj);
@@ -112,10 +112,10 @@ classdef GPFA
                 assert(size(gpfaObj.S, 1) == gpfaObj.T, '''S'' must be size [T x M]');
                 assert(isempty(gpfaObj.D) || all(size(gpfaObj.D) == [gpfaObj.N gpfaObj.M]), '''D'' must be size [N x M]');
             end
-
+            
             if isempty(gpfaObj.times) && isempty(gpfaObj.dt)
                 gpfaObj.dt = 1;
-
+                
                 if ~isempty(gpfaObj.taus)
                     warning('''taus'' provided but no times were set!');
                 end
@@ -151,23 +151,23 @@ classdef GPFA
             
             %% Check for and apply preprocessing transformations
             
-%             if ~isempty(gpfaObj.preTransform)
-%                 % Transform Y data
-%                 gpfaObj.Y = gpfaObj.preTransform(gpfaObj.Y);
-%                 
-%                 % If not given, try to automatically infer what 'postTransform' should be.
-%                 if isempty(gpfaObj.postTransform)
-%                     if isequal(gpfaObj.preTransform, @sqrt)
-%                         gpfaObj.postTransform = @(x) x.^2;
-%                     elseif isequal(gpfaObj.preTransform, @log)
-%                         gpfaObj.postTransform = @exp;
-%                     else
-%                         error('Not sure how to invert ''%s''. Supply your own ''postTransform''', func2str(gpfaObj.preTransform));
-%                     end
-%                 end
-%             elseif ~isempty(gpfaObj.postTransform)
-%                 error('''postTransform'' is given without any ''preTransform''');
-%             end
+            % if ~isempty(gpfaObj.preTransform)
+            %     % Transform Y data
+            %     gpfaObj.Y = gpfaObj.preTransform(gpfaObj.Y);
+            % 
+            %     % If not given, try to automatically infer what 'postTransform' should be.
+            %     if isempty(gpfaObj.postTransform)
+            %         if isequal(gpfaObj.preTransform, @sqrt)
+            %             gpfaObj.postTransform = @(x) x.^2;
+            %         elseif isequal(gpfaObj.preTransform, @log)
+            %             gpfaObj.postTransform = @exp;
+            %         else
+            %             error('Not sure how to invert ''%s''. Supply your own ''postTransform''', func2str(gpfaObj.preTransform));
+            %         end
+            %     end
+            % elseif ~isempty(gpfaObj.postTransform)
+            %     error('''postTransform'' is given without any ''preTransform''');
+            % end
             
             
             %% Initialize loadings if they were not provided
@@ -190,7 +190,7 @@ classdef GPFA
         %% Learning
         [gpfaObj, Q] = emStep(gpfaObj, fixedParams)
         [bestFit, Qs] = fitEM(gpfaObj, maxIters, convergenceTol, fixedParams)
-
+        
         %% Simulation / Generate Data
         [Yhat, x] = simulate(gpfaObj)
     end
@@ -289,9 +289,9 @@ classdef GPFA
             k = gpfaObj.K;
             G = gpfaObj.Gamma;
             I = speye(size(G));
-%             blocks = gpfaObj.T * ones(1, gpfaObj.L);
-%             gpfaObj.Cov = k - k * G * blockmldivide((I + k * G), blocks, k); 
-            gpfaObj.Cov = k - k * G * ((I + k * G) \ k); 
+            blocks = gpfaObj.T * ones(1, gpfaObj.L);
+            gpfaObj.Cov = k - k * G * blockmldivide((I + k * G), blocks, k);
+            % gpfaObj.Cov = k - k * G * ((I + k * G) \ k);
         end
         
         function gpfaObj = updateAll(gpfaObj, Y)

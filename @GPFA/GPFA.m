@@ -20,6 +20,8 @@ classdef GPFA
         taus % [1 x L] timescale of each latent
         sigs % [1 x L] slow variability of each latent
         rhos % [1 x L] additional instantaneous variability of each latent
+        %% --- EM settings ---
+        fixed % cell array of fixed parameter names
     end
     
     properties% (Access = protected)
@@ -171,6 +173,9 @@ classdef GPFA
             
             
             %% Initialize loadings if they were not provided
+            
+            if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
+            
             gpfaInit = gpfaObj.initialize();
             
             if isempty(gpfaObj.b), gpfaObj.b = gpfaInit.b; end
@@ -188,8 +193,8 @@ classdef GPFA
         [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x)
         
         %% Learning
-        [gpfaObj, Q] = emStep(gpfaObj, fixedParams)
-        [bestFit, Qs] = fitEM(gpfaObj, maxIters, convergenceTol, fixedParams)
+        [gpfaObj, Q] = emStep(gpfaObj)
+        [bestFit, Qs] = fitEM(gpfaObj, maxIters, convergenceTol)
         
         %% Simulation / Generate Data
         [Yhat, x] = simulate(gpfaObj)
@@ -199,14 +204,18 @@ classdef GPFA
         %% Helper to initialize parameters based on data
         function gpfaObj = initialize(gpfaObj)
             % Initialize mean b using mean of data
-            gpfaObj.b = nanmean(gpfaObj.Y, 1)';
+            if ~any(strcmp('b', gpfaObj.fixed))
+                gpfaObj.b = nanmean(gpfaObj.Y, 1)';
+            end
             
             % Initialize latent loadings C using top L principal components
-            dataCov = nancov(gpfaObj.Y, 'pairwise');
-            [gpfaObj.C, ~] = eigs(dataCov, gpfaObj.L);
+            if ~any(strcmp('C', gpfaObj.fixed))
+                dataCov = nancov(gpfaObj.Y, 'pairwise');
+                [gpfaObj.C, ~] = eigs(dataCov, gpfaObj.L);
+            end
             
             % Initialize stimulus loadings D using linear regression
-            if ~isempty(gpfaObj.S)
+            if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
                 % The following is the same as first replacing each missing value with the mean
                 % (since b is the mean) then regressing using (Y-b)/S
                 Yeffective = gpfaObj.Y' - gpfaObj.b;
@@ -217,11 +226,13 @@ classdef GPFA
             
             % Initialize private variance R using residuals from the stimulus prediction only,
             % scaled up by 10 because over-estimating variance early helps keep EM stable.
-            residuals = gpfaObj.Y - gpfaObj.b';
-            if ~isempty(gpfaObj.S)
-                residuals = residuals - gpfaObj.S * gpfaObj.D';
+            if ~any(strcmp('R', gpfaObj.fixed))
+                residuals = gpfaObj.Y - gpfaObj.b';
+                if ~isempty(gpfaObj.S)
+                    residuals = residuals - gpfaObj.S * gpfaObj.D';
+                end
+                gpfaObj.R = 10 * nanvar(residuals, [], 1)';
             end
-            gpfaObj.R = 10 * nanvar(residuals, [], 1)';
         end
         
         %% Functions to update 'precomupted' terms when underlying parameters change

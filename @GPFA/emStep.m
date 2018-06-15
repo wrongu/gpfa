@@ -1,4 +1,4 @@
-function [gpfaObj, Q] = emStep(gpfaObj, fixedParams)
+function [gpfaObj, Q] = emStep(gpfaObj)
 R = gpfaObj.R;
 T = gpfaObj.T;
 L = gpfaObj.L;
@@ -7,8 +7,6 @@ D = gpfaObj.D;
 Y = gpfaObj.Y;
 b = gpfaObj.b;
 Gamma = gpfaObj.Gamma;
-
-if nargin < 2, fixedParams = {}; end
 
 if ~isempty(gpfaObj.S)
     stim_predict = gpfaObj.S * D';
@@ -43,27 +41,27 @@ Q = -1/2 * neg_2Q;
 % Note that the 'true' M-Step would jointly optimize b, C, D, and R together. We approximate this
 % here by updating in the order b, C, D, R, since R depends on the previous 3, and all depend on b.
 
-if ~any(strcmp('b', fixedParams))
+if ~any(strcmp('b', gpfaObj.fixed))
     residual = Y - mu_x * C' - stim_predict;
     b = nanmean(residual, 1)';
 end
 
-if ~any(strcmp('C', fixedParams))
+if ~any(strcmp('C', gpfaObj.fixed))
     residual = Y - b' - stim_predict;
     residual(isnan(residual)) = 0;
     C = (residual' * mu_x) / expected_xx;
 end
 
-if ~any(strcmp('D', fixedParams)) && ~isempty(gpfaObj.S)
+if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
     residual = Y - b' - mu_x * C';
     residual(isnan(residual)) = 0;
     D = residual' * gpfaObj.S / (gpfaObj.S' * gpfaObj.S);
 end
 
-if ~any(strcmp('R', fixedParams))
+if ~any(strcmp('R', gpfaObj.fixed))
     residual = (Y - b' - mu_x * C' - stim_predict);
     residual(isnan(residual)) = 0;
-    gpfaObj.R = diag((residual' * residual + C * sum(sigma_tt, 3) * C') / T);
+    R = diag((residual' * residual + C * sum(sigma_tt, 3) * C') / T);
 end
 
 gpfaObj.b = b;

@@ -70,8 +70,9 @@ if ~any(strcmp('taus', gpfaObj.fixed))
     lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
     % Perform some number of gradient steps on timescales
     for step=1:25
-        [~, dQ_dtau] = gpfaObj.timescaleDeriv(e_xx);
-        gpfaObj.taus = gpfaObj.taus + lr * dQ_dtau;
+        [~, dQ_dlogtau2] = gpfaObj.timescaleDeriv(e_xx);
+        gpfaObj.log_tau2s = gpfaObj.log_tau2s + lr * dQ_dlogtau2;
+        gpfaObj.taus = exp(gpfaObj.log_tau2s / 2);
         gpfaObj = gpfaObj.updateK();
     end
 end

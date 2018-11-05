@@ -31,6 +31,8 @@ classdef GPFA
         isKernelToeplitz % whether K matrix has toeplitz structure (requires equal-spaced time points)
         % preTransform     % preprocessing applied to data (e.g. @sqrt to square-root transform spike counts)
         % postTransform    % the inverse of preTransform
+        %% --- Kernel stuff ---
+        log_tau2s % equal to log(taus^2) (helps with learning)
         %% --- Precomputed matrices ---
         K     % [TL x TL] (sparse matrix) kernel-based covariance for (flattened) latents
         Gamma % [TL x TL] (sparse matrix) Kronecker of (C'*inv(R)*C) and eye(T), adjusted for missing data.
@@ -80,12 +82,18 @@ classdef GPFA
         end
         
         function gpfaObj = setFields(gpfaObj, varargin)
+            %% Ensure no protected fields are being written
+            % TODO - is there an introspective programmatic way to get these?
+            protectedFields = {'isKernelToeplitz', 'log_tau2s', 'K', 'Gamma', 'Cov'};
+            
             %% Copy fields from varargin
             allProps = properties(gpfaObj);
             for i=1:2:length(varargin)
                 fieldname = varargin{i};
                 % Note: isfield() does not work on objects, but searching for property names does.
-                if any(strcmp(allProps, fieldname))
+                if ismember(fieldname, protectedFields)
+                    warning('Refusing to set protected field ''%s''', fieldname);
+                elseif any(strcmp(allProps, fieldname))
                     gpfaObj.(fieldname) = varargin{i+1};
                 else
                     error('Unrecognized field: ''%s''', fieldname);
@@ -143,6 +151,7 @@ classdef GPFA
             if isempty(gpfaObj.taus)
                 gpfaObj.taus = 10 * effectiveDt * ones(1, gpfaObj.L);
             end
+            gpfaObj.log_tau2s = 2 * log(gpfaObj.taus);
             
             if isempty(gpfaObj.sigs)
                 gpfaObj.sigs = ones(1, gpfaObj.L);
@@ -177,8 +186,8 @@ classdef GPFA
             %% Initialize loadings if they were not provided
             
             if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
-            if isempty(gpfaObj.lr), gpfaObj.lr = 0.01; end
-            if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 20; end
+            if isempty(gpfaObj.lr), gpfaObj.lr = 0.001; end
+            if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 100; end
             
             gpfaInit = gpfaObj.initialize();
             
@@ -240,17 +249,17 @@ classdef GPFA
         end
 
         %% Derivative and Q function value w.r.t. timescale
-        function [Q, dQ_dtau] = timescaleDeriv(gpfaObj, e_xx)
+        function [Q, dQ_dlogtau2] = timescaleDeriv(gpfaObj, e_xx)
             Ki = inv(gpfaObj.K);
             Q = -0.5 * (e_xx(:)' * Ki(:) + logdet(gpfaObj.K));
-            dQ_dtau = zeros(size(gpfaObj.taus));
+            dQ_dlogtau2 = zeros(size(gpfaObj.taus));
             dt2 = (gpfaObj.times - gpfaObj.times').^2;
             for l=1:gpfaObj.L
                 subs = (1:gpfaObj.T) + (l-1)*gpfaObj.T;
                 dQ_dKl = -0.5 * (Ki(subs,subs) - Ki(subs,subs) * e_xx(subs,subs) * Ki(subs,subs));
-                dKl_dtaul = gpfaObj.sigs(l)^2 * exp(-dt2/2/gpfaObj.taus(l)^2) .* dt2 / gpfaObj.taus(l)^3;
+                dKl_dlogtaul2 = 0.5 * gpfaObj.sigs(l)^2 * exp(-dt2/2/gpfaObj.taus(l)^2) .* dt2 / exp(gpfaObj.log_tau2s(l));
                 % Matrix chain rule
-                dQ_dtau(l) = dQ_dKl(:)' * dKl_dtaul(:);
+                dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:);
             end
         end
         

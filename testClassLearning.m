@@ -34,6 +34,23 @@ disp('generate');
 [simData, xTrue] = gpfa.simulate();
 gpfa = gpfa.setFields('Y', simData);
 
+figure;
+subplot(2,1,1);
+imagesc(simData');
+xlabel('trials');
+ylabel('neurons');
+title('data');
+colorbar;
+
+stim_pred = S * D';
+residuals = simData - stim_pred;
+subplot(2,1,2);
+imagesc(residuals');
+xlabel('trials');
+ylabel('neurons');
+title('residuals (minus stim)');
+colorbar;
+
 %% Test inference
 
 disp('infer');
@@ -41,6 +58,7 @@ disp('infer');
 variances = diag(sigma_x);
 
 figure;
+subplot(2,1,1);
 hold on;
 colors = lines(L);
 for l=1:L
@@ -50,10 +68,20 @@ for l=1:L
 end
 title('ground truth versus inferred values of latent X');
 
+residuals = simData - gpfa.predictY;
+subplot(2,1,2);
+imagesc(residuals');
+xlabel('trials');
+ylabel('neurons');
+title('residuals (predict Y with ground truth model)');
+colorbar;
+
 %% Test full learning and monotonic increase of 'Q'
 
-iters = 50;
-[bestFit, Qs] = gpfa.fitEM(iters, 1e-6);
+iters = 500;
+% gpfa = gpfa.setFields('fixed', {'taus'});
+init = gpfa.setFields('fixed', {}, 'taus', [10 10 10]);
+[bestFit, Qs] = init.fitEM(iters, 1e-6);
 
 figure;
 plot(Qs);
@@ -77,3 +105,32 @@ subplot(2,2,4);
 scatter(gpfa.D(:), bestFit.D(:));
 title('fit vs true stim loadings ''D''');
 axis equal;
+
+for l=1:gpfa.L
+    fprintf('true tau_%d = %f\tfit tau_%d = %f\n', l, gpfa.taus(l), l, bestFit.taus(l));
+end
+
+%% Re-test inference using best-fit model
+
+disp('infer');
+[mu_x, sigma_x, e_xx] = bestFit.inferX(simData);
+variances = diag(sigma_x);
+
+figure;
+subplot(2,1,1);
+hold on;
+colors = lines(L);
+for l=1:L
+    stdev = sqrt(variances((l-1)*T+1:l*T));
+    errorbar(mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
+    plot(xTrue(:, l), 'Color', colors(l, :), 'LineWidth', 2);
+end
+title('ground truth versus (fit) inferred values of latent X');
+
+residuals = simData - bestFit.predictY;
+subplot(2,1,2);
+imagesc(residuals');
+xlabel('trials');
+ylabel('neurons');
+title('residuals (predict Y with fitted model)');
+colorbar;

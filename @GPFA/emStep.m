@@ -1,4 +1,4 @@
-function [gpfaObj, Q] = emStep(gpfaObj)
+function [gpfaObj, Q] = emStep(gpfaObj, itr)
 R = gpfaObj.R;
 T = gpfaObj.T;
 L = gpfaObj.L;
@@ -16,7 +16,7 @@ end
 
 %% E-Step
 
-[mu_x, sigma_x] = gpfaObj.inferX();
+[mu_x, sigma_x, e_xx] = gpfaObj.inferX();
 
 % sigma_tt will contain values of sigma_x at all t1==t2
 sigma_tt = zeros(L, L, T);
@@ -62,6 +62,18 @@ if ~any(strcmp('R', gpfaObj.fixed))
     residual = (Y - b' - mu_x * C' - stim_predict);
     residual(isnan(residual)) = 0;
     R = diag((residual' * residual + C * sum(sigma_tt, 3) * C') / T);
+end
+
+if ~any(strcmp('taus', gpfaObj.fixed))
+    [QK, ~] = gpfaObj.timescaleDeriv(e_xx);
+    Q = Q + QK;
+    lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
+    % Perform some number of gradient steps on timescales
+    for step=1:25
+        [~, dQ_dtau] = gpfaObj.timescaleDeriv(e_xx);
+        gpfaObj.taus = gpfaObj.taus + lr * dQ_dtau;
+        gpfaObj = gpfaObj.updateK();
+    end
 end
 
 gpfaObj.b = b;

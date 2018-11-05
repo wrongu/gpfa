@@ -1,9 +1,9 @@
-function [mu_x, sigma_x] = inferX(gpfaObj, Y)
+function [mu_x, sigma_x, outer_x] = inferX(gpfaObj, Y)
 
 if ~exist('Y', 'var')
     Y = gpfaObj.Y;
 else
-	gpfaObj.Y = Y;
+    gpfaObj.Y = Y;
     gpfaObj = gpfaObj.updateGamma(Y);
     gpfaObj = gpfaObj.updateCov();
 end
@@ -21,5 +21,10 @@ RiC = gpfaObj.C ./ gpfaObj.R;
 sigma_x = gpfaObj.Cov;
 mu_x = sigma_x * reshape(residual * RiC, gpfaObj.T * gpfaObj.L, 1);
 mu_x = reshape(mu_x, gpfaObj.T, gpfaObj.L);
+
+if nargout >= 3
+    % Expected value of outer product, E[xx']
+    outer_x = sigma_x + mu_x(:) * mu_x(:)';
+end
 
 end

@@ -22,6 +22,8 @@ classdef GPFA
         rhos % [1 x L] additional instantaneous variability of each latent
         %% --- EM settings ---
         fixed % cell array of fixed parameter names
+        lr    % learning rate for gradient-based updates
+        lr_decay % half-life of learning rate for simulated annealing
     end
     
     properties% (Access = protected)
@@ -175,6 +177,8 @@ classdef GPFA
             %% Initialize loadings if they were not provided
             
             if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
+            if isempty(gpfaObj.lr), gpfaObj.lr = 0.01; end
+            if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 20; end
             
             gpfaInit = gpfaObj.initialize();
             
@@ -188,12 +192,12 @@ classdef GPFA
         end
         
         %% Inference
-        [mu_x, sigma_x] = inferX(gpfaObj, Y)
+        [mu_x, sigma_x, outer_x] = inferX(gpfaObj, Y)
         [mu_Y] = predictY(gpfaObj, mu_x)
         [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x)
         
         %% Learning
-        [gpfaObj, Q] = emStep(gpfaObj)
+        [gpfaObj, Q] = emStep(gpfaObj, itr)
         [bestFit, Qs] = fitEM(gpfaObj, maxIters, convergenceTol)
         
         %% Simulation / Generate Data
@@ -232,6 +236,21 @@ classdef GPFA
                     residuals = residuals - gpfaObj.S * gpfaObj.D';
                 end
                 gpfaObj.R = 10 * nanvar(residuals, [], 1)';
+            end
+        end
+
+        %% Derivative and Q function value w.r.t. timescale
+        function [Q, dQ_dtau] = timescaleDeriv(gpfaObj, e_xx)
+            Ki = inv(gpfaObj.K);
+            Q = -0.5 * (e_xx(:)' * Ki(:) + logdet(gpfaObj.K));
+            dQ_dtau = zeros(size(gpfaObj.taus));
+            dt2 = (gpfaObj.times - gpfaObj.times').^2;
+            for l=1:gpfaObj.L
+                subs = (1:gpfaObj.T) + (l-1)*gpfaObj.T;
+                dQ_dKl = -0.5 * (Ki(subs,subs) - Ki(subs,subs) * e_xx(subs,subs) * Ki(subs,subs));
+                dKl_dtaul = gpfaObj.sigs(l)^2 * exp(-dt2/2/gpfaObj.taus(l)^2) .* dt2 / gpfaObj.taus(l)^3;
+                % Matrix chain rule
+                dQ_dtau(l) = dQ_dKl(:)' * dKl_dtaul(:);
             end
         end
         

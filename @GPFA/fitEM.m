@@ -5,12 +5,12 @@ if ~exist('convergenceTol', 'var'), convergenceTol = 1e-6; end
 Qs = zeros(1, maxIters);
 tstart = tic;
 
-allParams = {'R', 'C', 'D', 'b'};
+allParams = {'R', 'C', 'D', 'b', 'taus'};
 lastParamValues = concatAllParams(gpfaObj, allParams);
 
 for itr=1:maxIters
     % TODO (here or inside emStep): block updates of parameters that depend on each other
-    [newObj, Qs(itr)] = gpfaObj.emStep();
+    [newObj, Qs(itr)] = gpfaObj.emStep(itr);
     elapsed = toc(tstart);
     
     newParamValues = concatAllParams(newObj, allParams);
@@ -39,7 +39,7 @@ else
 end
 
 bestFit = gpfaObj;
-[~, Qs(end+1)] = bestFit.emStep();
+[~, Qs(end+1)] = bestFit.emStep(maxIters);
 
 end
 

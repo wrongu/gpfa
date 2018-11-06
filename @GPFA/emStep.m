@@ -64,6 +64,10 @@ if ~any(strcmp('R', gpfaObj.fixed))
     R = diag((residual' * residual + C * sum(sigma_tt, 3) * C') / T);
 end
 
+if ~any(strcmp('rhos', gpfaObj.fixed))
+    gpfaObj.rhos = gpfaObj.init_rhos * (1/2) ^ ((itr-1) / gpfaObj.rho_decay);
+end
+
 if ~any(strcmp('taus', gpfaObj.fixed))
     [QK, ~] = gpfaObj.timescaleDeriv(e_xx);
     Q = Q + QK;

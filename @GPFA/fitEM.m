@@ -5,6 +5,7 @@ if ~exist('convergenceTol', 'var'), convergenceTol = 1e-6; end
 Qs = zeros(1, maxIters);
 tstart = tic;
 
+rhos = gpfaObj.rhos;
 allParams = {'R', 'C', 'D', 'b', 'taus'};
 lastParamValues = concatAllParams(gpfaObj, allParams);
 

@@ -23,7 +23,9 @@ classdef GPFA
         %% --- EM settings ---
         fixed % cell array of fixed parameter names
         lr    % learning rate for gradient-based updates
-        lr_decay % half-life of learning rate for simulated annealing
+        lr_decay  % half-life of learning rate for simulated annealing
+        rho_decay % half-life of 'rho' parameters
+        init_rhos % pre-decay values
     end
     
     properties% (Access = protected)
@@ -161,6 +163,7 @@ classdef GPFA
                 % Note: small nonzero rho helps numerical stability
                 gpfaObj.rhos = zeros(1, gpfaObj.L);
             end
+            gpfaObj.init_rhos = gpfaObj.rhos;
             
             %% Check for and apply preprocessing transformations
             
@@ -188,6 +191,7 @@ classdef GPFA
             if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
             if isempty(gpfaObj.lr), gpfaObj.lr = 0.001; end
             if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 100; end
+            if isempty(gpfaObj.rho_decay), gpfaObj.lr_decay = 20; end
             
             gpfaInit = gpfaObj.initialize();
             

@@ -28,7 +28,7 @@ end
 
 disp('init');
 fakeData = zeros(T, N);
-gpfa = GPFA(fakeData, L, 'dt', 1, 'R', R, 'taus', taus, 'sigs', sigs, 'rhos', rhos, 'b', b, 'C', C, 'S', S, 'D', D);
+gpfa = GPFA(fakeData, L, 'dt', 1, 'R', R, 'taus', taus, 'sigs', sigs, 'rhos', rhos, 'b', b, 'C', C, 'S', S, 'D', D, 'rho_decay', inf);
 
 disp('generate');
 [simData, xTrue] = gpfa.simulate();

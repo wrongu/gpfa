@@ -79,8 +79,8 @@ colorbar;
 %% Test full learning and monotonic increase of 'Q'
 
 iters = 500;
-% gpfa = gpfa.setFields('fixed', {'taus'});
-init = gpfa.setFields('fixed', {}, 'taus', [10 10 10]);
+% init = gpfa.setFields('fixed', {'taus'});
+init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S, 'rho_decay', inf);
 [bestFit, Qs] = init.fitEM(iters, 1e-6);
 
 figure;

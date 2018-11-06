@@ -191,7 +191,7 @@ classdef GPFA
             if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
             if isempty(gpfaObj.lr), gpfaObj.lr = 0.001; end
             if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 100; end
-            if isempty(gpfaObj.rho_decay), gpfaObj.lr_decay = 20; end
+            if isempty(gpfaObj.rho_decay), gpfaObj.rho_decay = 20; end
             
             gpfaInit = gpfaObj.initialize();
             
@@ -225,12 +225,6 @@ classdef GPFA
                 gpfaObj.b = nanmean(gpfaObj.Y, 1)';
             end
             
-            % Initialize latent loadings C using top L principal components
-            if ~any(strcmp('C', gpfaObj.fixed))
-                dataCov = nancov(gpfaObj.Y, 'pairwise');
-                [gpfaObj.C, ~] = eigs(dataCov, gpfaObj.L);
-            end
-            
             % Initialize stimulus loadings D using linear regression
             if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
                 % The following is the same as first replacing each missing value with the mean
@@ -241,13 +235,40 @@ classdef GPFA
                 gpfaObj.D = Yeffective / gpfaObj.S';
             end
             
+            residuals = gpfaObj.Y - gpfaObj.b';
+            if ~isempty(gpfaObj.S)
+                residuals = residuals - gpfaObj.S * gpfaObj.D';
+            end
+            
+            % Initialize latent loadings C using top L principal components of data after regressing
+            % out the stimulus and smoothing by kernels of each unique 'tau'
+            if ~any(strcmp('C', gpfaObj.fixed))                
+                if ~any(isnan(gpfaObj.Y(:)))
+                    uTaus = unique(gpfaObj.taus);
+                    for i=1:length(uTaus)
+                        kernel = exp(-0.5*(gpfaObj.times - gpfaObj.times').^2 / uTaus(i)^2);
+                        kernel = kernel ./ sum(kernel, 2);
+                        % This dot product is [T x T] x [T x N]; it averages together data with a
+                        % 'window' that depends on the kernel size and time points.
+                        dataSmooth = kernel * residuals;
+                        % Use top principal components of 'smoothed' data to initialize loadings at this
+                        % time-scale
+                        smoothCov = nancov(dataSmooth, 'pairwise');
+                        nTaus = sum(gpfaObj.taus == uTaus(i));
+                        [gpfaObj.C(:, gpfaObj.taus == uTaus(i)), ~] = eigs(smoothCov, nTaus);
+                    end
+                else
+                    % If there is missing data, the above smoothing method will likely fail.
+                    % Initialize loadings randomly.
+                    vars = nanvar(residuals, 1, 1);
+                    scale = mean(sqrt(vars));
+                    gpfaObj.C = scale * randn(gpfaObj.N, gpfaObj.L);
+                end
+            end
+            
             % Initialize private variance R using residuals from the stimulus prediction only,
             % scaled up by 10 because over-estimating variance early helps keep EM stable.
             if ~any(strcmp('R', gpfaObj.fixed))
-                residuals = gpfaObj.Y - gpfaObj.b';
-                if ~isempty(gpfaObj.S)
-                    residuals = residuals - gpfaObj.S * gpfaObj.D';
-                end
                 gpfaObj.R = 10 * nanvar(residuals, [], 1)';
             end
         end

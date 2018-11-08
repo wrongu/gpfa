@@ -275,13 +275,16 @@ classdef GPFA
 
         %% Derivative and Q function value w.r.t. timescale
         function [Q, dQ_dlogtau2] = timescaleDeriv(gpfaObj, e_xx)
-            Ki = inv(gpfaObj.K);
-            Q = -0.5 * (e_xx(:)' * Ki(:) + logdet(gpfaObj.K));
+            Q = 0;
             dQ_dlogtau2 = zeros(size(gpfaObj.taus));
             dt2 = (gpfaObj.times - gpfaObj.times').^2;
             for l=1:gpfaObj.L
                 subs = (1:gpfaObj.T) + (l-1)*gpfaObj.T;
-                dQ_dKl = -0.5 * (Ki(subs,subs) - Ki(subs,subs) * e_xx(subs,subs) * Ki(subs,subs));
+                Kl = gpfaObj.K(subs, subs);
+                Kli = inv(Kl);
+                e_xx_part = e_xx(subs, subs);
+                Q = Q - 0.5 * (e_xx_part(:)' * Kli(:) + logdet(Kl));
+                dQ_dKl = -0.5 * (Kli - Kli * e_xx_part * Kli); %#ok<MINV>
                 dKl_dlogtaul2 = 0.5 * gpfaObj.sigs(l)^2 * exp(-dt2/2/gpfaObj.taus(l)^2) .* dt2 / exp(gpfaObj.log_tau2s(l));
                 % Matrix chain rule
                 dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:);

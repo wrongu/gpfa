@@ -24,8 +24,7 @@ classdef GPFA
         fixed % cell array of fixed parameter names
         lr    % learning rate for gradient-based updates
         lr_decay  % half-life of learning rate for simulated annealing
-        rho_decay % half-life of 'rho' parameters
-        init_rhos % pre-decay values
+        rho_scale % mean of exponential prior on 'rho' values
     end
     
     properties% (Access = protected)
@@ -35,6 +34,7 @@ classdef GPFA
         % postTransform    % the inverse of preTransform
         %% --- Kernel stuff ---
         log_tau2s % equal to log(taus^2) (helps with learning)
+        log_rho2s % equal to log(rhos^2)
         %% --- Precomputed matrices ---
         K     % [TL x TL] (sparse matrix) kernel-based covariance for (flattened) latents
         Gamma % [TL x TL] (sparse matrix) Kronecker of (C'*inv(R)*C) and eye(T), adjusted for missing data.
@@ -86,7 +86,7 @@ classdef GPFA
         function gpfaObj = setFields(gpfaObj, varargin)
             %% Ensure no protected fields are being written
             % TODO - is there an introspective programmatic way to get these?
-            protectedFields = {'isKernelToeplitz', 'log_tau2s', 'K', 'Gamma', 'Cov'};
+            protectedFields = {'isKernelToeplitz', 'log_tau2s', 'log_rho2s', 'K', 'Gamma', 'Cov'};
             
             %% Copy fields from varargin
             allProps = properties(gpfaObj);
@@ -159,11 +159,17 @@ classdef GPFA
                 gpfaObj.sigs = ones(1, gpfaObj.L);
             end
             
+            if isempty(gpfaObj.rho_scale)
+                gpfaObj.rho_scale = 1e-3 * ones(1, gpfaObj.L);
+            elseif length(gpfaObj.rho_scale) == 1
+                gpfaObj.rho_scale = gpfaObj.rho_scale * ones(1, gpfaObj.L);
+            end
+            
             if isempty(gpfaObj.rhos)
                 % Note: small nonzero rho helps numerical stability
-                gpfaObj.rhos = zeros(1, gpfaObj.L);
+                gpfaObj.rhos = gpfaObj.rho_scale;
             end
-            gpfaObj.init_rhos = gpfaObj.rhos;
+            gpfaObj.log_rho2s = 2 * log(gpfaObj.rhos);
             
             %% Check for and apply preprocessing transformations
             
@@ -191,7 +197,6 @@ classdef GPFA
             if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
             if isempty(gpfaObj.lr), gpfaObj.lr = 0.001; end
             if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 100; end
-            if isempty(gpfaObj.rho_decay), gpfaObj.rho_decay = 20; end
             
             gpfaInit = gpfaObj.initialize();
             
@@ -274,20 +279,25 @@ classdef GPFA
         end
 
         %% Derivative and Q function value w.r.t. timescale
-        function [Q, dQ_dlogtau2] = timescaleDeriv(gpfaObj, e_xx)
+        function [Q, dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, e_xx)
             Q = 0;
             dQ_dlogtau2 = zeros(size(gpfaObj.taus));
+            dQ_dlogrho2 = zeros(size(gpfaObj.taus));
             dt2 = (gpfaObj.times - gpfaObj.times').^2;
             for l=1:gpfaObj.L
                 subs = (1:gpfaObj.T) + (l-1)*gpfaObj.T;
                 Kl = gpfaObj.K(subs, subs);
                 Kli = inv(Kl);
                 e_xx_part = e_xx(subs, subs);
-                Q = Q - 0.5 * (e_xx_part(:)' * Kli(:) + logdet(Kl));
+                log_prior_rho = -gpfaObj.rhos(l) / gpfaObj.rho_scale(l);
+                Q = Q - 0.5 * (e_xx_part(:)' * Kli(:) + logdet(Kl)) + log_prior_rho;
                 dQ_dKl = -0.5 * (Kli - Kli * e_xx_part * Kli); %#ok<MINV>
                 dKl_dlogtaul2 = 0.5 * gpfaObj.sigs(l)^2 * exp(-dt2/2/gpfaObj.taus(l)^2) .* dt2 / exp(gpfaObj.log_tau2s(l));
                 % Matrix chain rule
                 dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:);
+                % Rho is easier since it doesn't depend on time differences; include a derivative on
+                % the prior
+                dQ_dlogrho2(l) = sum(diag(dQ_dKl)) * exp(gpfaObj.log_rho2s(l)) - exp(gpfaObj.log_rho2s(l) / 2) / (2 * gpfaObj.rho_scale(l));
             end
         end
         

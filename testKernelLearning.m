@@ -8,7 +8,7 @@ M = 5;
 R = .05 * exp(randn(N, 1) * .2);
 taus = linspace(5, 30, L);
 sigs = .3 * ones(1, L);
-rhos = .01 * ones(1, L);
+rhos = exprnd(.01, 1, L);
 
 b = 10 * rand(N, 1);
 C = zeros(N, L);
@@ -79,8 +79,7 @@ colorbar;
 %% Test full learning and monotonic increase of 'Q'
 
 iters = 500;
-% init = gpfa.setFields('fixed', {'taus'});
-init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S, 'rho_decay', 10);
+init = gpfa.setFields('fixed', {'C', 'R', 'D', 'b'}, 'lr', 1e-3, 'rho_scale', .01);
 [bestFit, Qs] = init.fitEM(iters, 1e-6);
 
 figure;
@@ -108,6 +107,7 @@ axis equal;
 
 for l=1:gpfa.L
     fprintf('true tau_%d = %f\tfit tau_%d = %f\n', l, gpfa.taus(l), l, bestFit.taus(l));
+    fprintf('true rho_%d = %f\tfit rho_%d = %f\n', l, gpfa.rhos(l), l, bestFit.rhos(l));
 end
 
 %% Re-test inference using best-fit model

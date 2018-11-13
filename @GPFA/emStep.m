@@ -64,21 +64,38 @@ if ~any(strcmp('R', gpfaObj.fixed))
     R = diag((residual' * residual + C * sum(sigma_tt, 3) * C') / T);
 end
 
-if ~any(strcmp('rhos', gpfaObj.fixed))
-    gpfaObj.rhos = gpfaObj.init_rhos * (1/2) ^ ((itr-1) / gpfaObj.rho_decay);
-end
-
-if ~any(strcmp('taus', gpfaObj.fixed))
-    [QK, ~] = gpfaObj.timescaleDeriv(e_xx);
+prev_rhos = gpfaObj.rhos;
+prev_taus = gpfaObj.taus;
+if ~any(strcmp('rhos', gpfaObj.fixed)) || ~any(strcmp('taus', gpfaObj.fixed))
+    [QK, ~, ~] = gpfaObj.timescaleDeriv(e_xx);
     Q = Q + QK;
     lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
     % Perform some number of gradient steps on timescales
     for step=1:25
-        [~, dQ_dlogtau2] = gpfaObj.timescaleDeriv(e_xx);
+        % Get gradient
+        [~, dQ_dlogtau2, dQ_dlogrho2] = gpfaObj.timescaleDeriv(e_xx);
+        
+        % Step tau
         gpfaObj.log_tau2s = gpfaObj.log_tau2s + lr * dQ_dlogtau2;
         gpfaObj.taus = exp(gpfaObj.log_tau2s / 2);
+        
+        % Step rho
+        gpfaObj.log_rho2s = gpfaObj.log_rho2s + lr * dQ_dlogrho2;
+        gpfaObj.rhos = exp(gpfaObj.log_rho2s / 2);
+        
+        % Update GP covariance matrix
         gpfaObj = gpfaObj.updateK();
     end
+end
+
+if any(strcmp('taus', gpfaObj.fixed))
+    gpfaObj.taus = prev_taus;
+    gpfaObj.log_tau2s = 2 * log(gpfaObj.taus);
+end
+
+if any(strcmp('rhos', gpfaObj.fixed))
+    gpfaObj.rhos = prev_rhos;
+    gpfaObj.log_rho2s = 2 * log(gpfaObj.rhos);
 end
 
 gpfaObj.b = b;

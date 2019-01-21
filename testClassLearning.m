@@ -113,7 +113,7 @@ end
 %% Re-test inference using best-fit model
 
 disp('infer');
-[mu_x, sigma_x, e_xx] = bestFit.inferX(simData);
+[mu_x, sigma_x] = bestFit.inferX(simData);
 variances = diag(sigma_x);
 
 figure;

@@ -210,13 +210,13 @@ classdef GPFA
         end
         
         %% Inference
-        [mu_x, sigma_x, outer_x] = inferX(gpfaObj, Y)
+        [mu_x, sigma_x] = inferX(gpfaObj, Y)
         [mu_Y] = predictY(gpfaObj, mu_x)
         [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x)
         
         %% Learning
-        [gpfaObj, Q] = emStep(gpfaObj, itr)
-        [bestFit, Qs] = fitEM(gpfaObj, maxIters, convergenceTol)
+        [gpfaObj, Q, H] = emStep(gpfaObj, itr)
+        [bestFit, Qs, Hs] = fitEM(gpfaObj, maxIters, convergenceTol)
         
         %% Simulation / Generate Data
         [Yhat, x] = simulate(gpfaObj)
@@ -279,7 +279,7 @@ classdef GPFA
         end
 
         %% Derivative and Q function value w.r.t. timescale
-        function [Q, dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, e_xx)
+        function [Q, dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, mu_x, cov_x)
             Q = 0;
             dQ_dlogtau2 = zeros(size(gpfaObj.taus));
             dQ_dlogrho2 = zeros(size(gpfaObj.taus));
@@ -288,11 +288,12 @@ classdef GPFA
                 subs = (1:gpfaObj.T) + (l-1)*gpfaObj.T;
                 Kl = gpfaObj.K(subs, subs);
                 Kli = inv(Kl);
-                e_xx_part = e_xx(subs, subs);
+                e_xx_l = mu_x(:,l) .* mu_x(:,l)' + cov_x(subs, subs);
                 log_prior_rho = -gpfaObj.rhos(l) / gpfaObj.rho_scale(l);
-                Q = Q - 0.5 * (e_xx_part(:)' * Kli(:) + logdet(Kl)) + log_prior_rho;
-                dQ_dKl = -0.5 * (Kli - Kli * e_xx_part * Kli); %#ok<MINV>
-                dKl_dlogtaul2 = 0.5 * gpfaObj.sigs(l)^2 * exp(-dt2/2/gpfaObj.taus(l)^2) .* dt2 / exp(gpfaObj.log_tau2s(l));
+                Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x(subs, subs), Kli) + logdet(2*pi*Kl)) + log_prior_rho; %#ok<MINV>
+                dQ_dKl = Kli * e_xx_l * Kli - Kli; %#ok<MINV>
+                dt2_div_tau2 = dt2./(2*gpfaObj.taus(l)^2);
+                dKl_dlogtaul2 = 0.5 * gpfaObj.sigs(l)^2 * exp(-dt2_div_tau2) .* dt2_div_tau2;
                 % Matrix chain rule
                 dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:);
                 % Rho is easier since it doesn't depend on time differences; include a derivative on

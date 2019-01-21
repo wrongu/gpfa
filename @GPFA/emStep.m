@@ -1,4 +1,4 @@
-function [gpfaObj, Q] = emStep(gpfaObj, itr)
+function [gpfaObj, Q, H] = emStep(gpfaObj, itr)
 R = gpfaObj.R;
 T = gpfaObj.T;
 L = gpfaObj.L;
@@ -16,7 +16,7 @@ end
 
 %% E-Step
 
-[mu_x, sigma_x, e_xx] = gpfaObj.inferX();
+[mu_x, sigma_x] = gpfaObj.inferX();
 
 % sigma_tt will contain values of sigma_x at all t1==t2
 sigma_tt = zeros(L, L, T);
@@ -24,17 +24,18 @@ for t=1:T
     sigma_tt(:, :, t) = sigma_x(t:T:T*L, t:T:T*L);
 end
 % Compute E[x'x] from sigma_tt
-expected_xx = (mu_x' * mu_x) + sum(sigma_tt, 3);
+e_xx_inner = (mu_x' * mu_x) + sum(sigma_tt, 3);
 
 y_resid = Y - b' - stim_predict;
 y_resid(isnan(y_resid)) = 0;
 y_resid_Ri = y_resid ./ R';
 
-logdet_R = sum(log(R));
+logdet_R = sum(log(2*pi*R));
 trace_gamma_sigma = sum(sum(Gamma' .* sigma_x));
-neg_2Q = T * logdet_R + sum(sum(y_resid .* y_resid_Ri)) - 2 * sum(sum(y_resid_Ri .* (mu_x * C'))) ...
-    + vec(mu_x)' * Gamma * vec(mu_x) + trace_gamma_sigma;
-Q = -1/2 * neg_2Q;
+Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)) - 2 * sum(sum(y_resid_Ri .* (mu_x * C'))) ...
+    + vec(mu_x)' * Gamma * vec(mu_x) + trace_gamma_sigma);
+
+H = 1/2*logdet(2*pi*exp(1)*sigma_x);
 
 %% M-Step
 
@@ -49,7 +50,7 @@ end
 if ~any(strcmp('C', gpfaObj.fixed))
     residual = Y - b' - stim_predict;
     residual(isnan(residual)) = 0;
-    C = (residual' * mu_x) / expected_xx;
+    C = (residual' * mu_x) / e_xx_inner;
 end
 
 if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
@@ -64,38 +65,40 @@ if ~any(strcmp('R', gpfaObj.fixed))
     R = diag((residual' * residual + C * sum(sigma_tt, 3) * C') / T);
 end
 
-prev_rhos = gpfaObj.rhos;
-prev_taus = gpfaObj.taus;
-if ~any(strcmp('rhos', gpfaObj.fixed)) || ~any(strcmp('taus', gpfaObj.fixed))
-    [QK, ~, ~] = gpfaObj.timescaleDeriv(e_xx);
+update_tau = ~any(strcmp('taus', gpfaObj.fixed));
+update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
+
+if update_tau || update_rho
+    [QK, ~, ~] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
     Q = Q + QK;
     lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
+    
     % Perform some number of gradient steps on timescales
     for step=1:25
         % Get gradient
-        [~, dQ_dlogtau2, dQ_dlogrho2] = gpfaObj.timescaleDeriv(e_xx);
+        [~, dQ_dlogtau2, dQ_dlogrho2] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
         
         % Step tau
-        gpfaObj.log_tau2s = gpfaObj.log_tau2s + lr * dQ_dlogtau2;
-        gpfaObj.taus = exp(gpfaObj.log_tau2s / 2);
+        if ~any(strcmp('taus', gpfaObj.fixed))
+            gpfaObj.log_tau2s = gpfaObj.log_tau2s + lr * dQ_dlogtau2;
+            gpfaObj.taus = exp(gpfaObj.log_tau2s / 2);
+        end
         
         % Step rho
-        gpfaObj.log_rho2s = gpfaObj.log_rho2s + lr * dQ_dlogrho2;
-        gpfaObj.rhos = exp(gpfaObj.log_rho2s / 2);
+        if ~any(strcmp('rhos', gpfaObj.fixed))
+            gpfaObj.log_rho2s = gpfaObj.log_rho2s + lr * dQ_dlogrho2;
+            gpfaObj.rhos = exp(gpfaObj.log_rho2s / 2);
+        end
         
-        % Update GP covariance matrix
+        % Update K for next iteration (note: important that we only update K and not Cov here, as
+        % any update to expectations of x changes the underlying Q we're optimizing).
         gpfaObj = gpfaObj.updateK();
+        
+        % Break when changes get small
+        if abs(lr*dQ_dlogtau2) + abs(lr*dQ_dlogrho2) < 1e-9
+            break
+        end
     end
-end
-
-if any(strcmp('taus', gpfaObj.fixed))
-    gpfaObj.taus = prev_taus;
-    gpfaObj.log_tau2s = 2 * log(gpfaObj.taus);
-end
-
-if any(strcmp('rhos', gpfaObj.fixed))
-    gpfaObj.rhos = prev_rhos;
-    gpfaObj.log_rho2s = 2 * log(gpfaObj.rhos);
 end
 
 gpfaObj.b = b;

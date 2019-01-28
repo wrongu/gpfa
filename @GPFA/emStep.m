@@ -16,7 +16,15 @@ end
 
 %% E-Step
 
-[mu_x, sigma_x] = gpfaObj.inferX();
+if isempty(gpfaObj.Sf)
+    [mu_x, sigma_x] = gpfaObj.inferX();
+else
+    [mu_x, sigma_x, mu_f, sigma_f] = gpfaObj.inferMeanFieldXF();
+end
+
+if ~isempty(gpfaObj.Sf)
+    stim_predict = stim_predict + mu_f(gpfaObj.Sf_ord, :);
+end
 
 % sigma_tt will contain values of sigma_x at all t1==t2
 sigma_tt = zeros(L, L, T);
@@ -55,6 +63,9 @@ end
 
 if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
     residual = Y - b' - mu_x * C';
+    if ~isempty(gpfaObj.Sf)
+        residual = residual - mu_f(gpfaObj.Sf_ord, :);
+    end
     residual(isnan(residual)) = 0;
     D = residual' * gpfaObj.S / (gpfaObj.S' * gpfaObj.S);
 end
@@ -96,6 +107,52 @@ if update_tau || update_rho
         
         % Break when changes get small
         if abs(lr*dQ_dlogtau2) + abs(lr*dQ_dlogrho2) < 1e-9
+            break
+        end
+    end
+end
+
+if ~any(strcmp('signs', gpfaObj.fixed)) || ~any(strcmp('tauf', gpfaObj.fixed))
+    Qf = 0;
+    Hf = 0;
+    S = length(gpfaObj.Ns);
+    logdetK = logdet(gpfaObj.Kf);
+    for n=gpfaObj.N:-1:1
+        e_ff_n{n} = sigma_f{n} + mu_f(:,n)*mu_f(:,n)';
+        Qf = Qf - 1/2*(trace((gpfaObj.signs(n)^2 * gpfaObj.Kf) \ e_ff_n{n}) + gpfaObj.signs(n)^(2*S)*logdetK);
+        Hf = Hf + 1/2*logdet(2*pi*exp(1)*sigma_f{n});
+    end
+    Q = Q + Qf;
+    H = H + Hf;
+end
+
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed))
+    warning('skipping signs update since it''s broken right now');
+    % for n=1:gpfaObj.N
+    %     frac = trace(gpfaObj.Kf \ e_ff_n{n}) / (S * logdetK);
+    %     gpfaObj.signs(n) = frac^(-2*S-2);
+    % end
+end
+
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed))
+    lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
+    
+    logtauf2 = 2*log(gpfaObj.tauf);
+    
+    % Perform some number of gradient steps on tau_f
+    for step=1:25
+        % Get gradient
+        dQ_dlogtauf2 = gpfaObj.stimScaleDeriv(mu_f, sigma_f);
+        
+        % Step tau_f
+        logtauf2 = logtauf2 + lr * dQ_dlogtauf2;
+        gpfaObj.tauf = exp(dQ_dlogtauf2 / 2);
+        
+        % Update Kf for next iteration
+        gpfaObj = gpfaObj.updateKernelF();
+        
+        % Break when changes get small
+        if abs(lr*dQ_dlogtauf2) < 1e-9
             break
         end
     end

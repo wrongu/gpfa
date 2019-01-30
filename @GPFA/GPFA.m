@@ -37,9 +37,6 @@ classdef GPFA
         isKernelToeplitz   % whether K matrix has toeplitz structure (requires equal-spaced time points)
         % preTransform     % preprocessing applied to data (e.g. @sqrt to square-root transform spike counts)
         % postTransform    % the inverse of preTransform
-        %% --- Kernel stuff ---
-        log_tau2s % equal to log(taus^2) (helps with learning)
-        log_rho2s % equal to log(rhos^2)
         %% --- Precomputed matrices ---
         K     % [TL x TL] (sparse matrix) kernel-based covariance for (flattened) latents
         Gamma % [TL x TL] (sparse matrix) Kronecker of (C'*inv(R)*C) and eye(T), adjusted for missing data.
@@ -96,7 +93,7 @@ classdef GPFA
         function gpfaObj = setFields(gpfaObj, varargin)
             %% Ensure no protected fields are being written
             % TODO - is there an introspective programmatic way to get these?
-            protectedFields = {'isKernelToeplitz', 'log_tau2s', 'log_rho2s', 'K', 'Gamma', 'Cov', 'Ns', 'ss2'};
+            protectedFields = {'isKernelToeplitz', 'K', 'Gamma', 'Cov', 'Ns', 'ss2'};
             
             %% Copy fields from varargin
             allProps = properties(gpfaObj);
@@ -167,7 +164,6 @@ classdef GPFA
             if isempty(gpfaObj.taus)
                 gpfaObj.taus = 10 * effectiveDt * ones(1, gpfaObj.L);
             end
-            gpfaObj.log_tau2s = 2 * log(gpfaObj.taus);
             
             if isempty(gpfaObj.sigs)
                 gpfaObj.sigs = ones(1, gpfaObj.L);
@@ -183,7 +179,6 @@ classdef GPFA
                 % Note: small nonzero rho helps numerical stability
                 gpfaObj.rhos = gpfaObj.rho_scale;
             end
-            gpfaObj.log_rho2s = 2 * log(gpfaObj.rhos);
                         
             %% Check for and apply preprocessing transformations
             
@@ -355,7 +350,7 @@ classdef GPFA
                 dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:);
                 % Rho is easier since it doesn't depend on time differences; include a derivative on
                 % the prior
-                dQ_dlogrho2(l) = sum(diag(dQ_dKl)) * exp(gpfaObj.log_rho2s(l)) - exp(gpfaObj.log_rho2s(l) / 2) / (2 * gpfaObj.rho_scale(l));
+                dQ_dlogrho2(l) = sum(diag(dQ_dKl))*gpfaObj.rhos(l)^2 - gpfaObj.rhos(l)/(2*gpfaObj.rho_scale(l));
             end
         end
         

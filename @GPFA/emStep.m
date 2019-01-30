@@ -90,6 +90,9 @@ if update_tau || update_rho
     [QK, ~, ~] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
     Q = Q + QK;
     lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
+
+    logtau2s = 2*log(gpfaObj.taus);
+    logtau2s = 2*log(gpfaObj.rhos);
     
     % Perform some number of gradient steps on timescales
     for step=1:25
@@ -98,14 +101,14 @@ if update_tau || update_rho
         
         % Step tau
         if ~any(strcmp('taus', gpfaObj.fixed))
-            gpfaObj.log_tau2s = gpfaObj.log_tau2s + lr * dQ_dlogtau2;
-            gpfaObj.taus = exp(gpfaObj.log_tau2s / 2);
+            logtau2s = logtau2s + lr * dQ_dlogtau2;
+            gpfaObj.taus = exp(logtau2s / 2);
         end
         
         % Step rho
         if ~any(strcmp('rhos', gpfaObj.fixed))
-            gpfaObj.log_rho2s = gpfaObj.log_rho2s + lr * dQ_dlogrho2;
-            gpfaObj.rhos = exp(gpfaObj.log_rho2s / 2);
+            logrho2s = logrho2s + lr * dQ_dlogrho2;
+            gpfaObj.rhos = exp(logrho2s / 2);
         end
         
         % Update K for next iteration (note: important that we only update K and not Cov here, as

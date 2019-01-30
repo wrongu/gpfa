@@ -112,7 +112,7 @@ if update_tau || update_rho
     end
 end
 
-if ~any(strcmp('signs', gpfaObj.fixed)) || ~any(strcmp('tauf', gpfaObj.fixed))
+if ~isempty(gpfaObj.Sf)
     Qf = 0;
     Hf = 0;
     S = length(gpfaObj.Ns);
@@ -146,7 +146,7 @@ if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed))
         
         % Step tau_f
         logtauf2 = logtauf2 + lr * dQ_dlogtauf2;
-        gpfaObj.tauf = exp(dQ_dlogtauf2 / 2);
+        gpfaObj.tauf = exp(logtauf2 / 2);
         
         % Update Kf for next iteration
         gpfaObj = gpfaObj.updateKernelF();

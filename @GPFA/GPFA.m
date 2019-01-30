@@ -346,14 +346,17 @@ classdef GPFA
         
         function dQ_dlogtauf2 = stimScaleDeriv(gpfaObj, mu_f, sigma_f)
             dQ_dlogtauf2 = 0;
-            dK_dtauf = 2*gpfaObj.Kf*gpfaObj.ss2/(gpfaObj.tauf^3);
+            dK_dlogtau2f = gpfaObj.Kf .* gpfaObj.ss2 / gpfaObj.tauf^2;
+            % We can get NaN values here where ss2 is inf and thus Kf is 0.. Clearly the correct
+            % semantics would be for the derivative of these entries to be zero.
+            dK_dlogtau2f(isnan(dK_dlogtau2f)) = 0;
             dimf = size(gpfaObj.Kf, 1);
             Ki = gpfaObj.Kf \ speye(dimf);
             for n=1:gpfaObj.N
                 sign = gpfaObj.signs(n);
                 e_ff_n = mu_f(:,n)*mu_f(:,n)' + sigma_f{n};
                 dQfn_dK = sign^(2*dimf)*Ki - 1/sign^2 * Ki * e_ff_n * Ki;
-                dQ_dlogtauf2 = dQ_dlogtauf2 - 1/2*tracedot(dQfn_dK, dK_dtauf);
+                dQ_dlogtauf2 = dQ_dlogtauf2 - 1/2*tracedot(dQfn_dK, dK_dlogtau2f);
             end
         end
         

@@ -73,7 +73,14 @@ end
 if ~any(strcmp('R', gpfaObj.fixed))
     residual = (Y - b' - mu_x * C' - stim_predict);
     residual(isnan(residual)) = 0;
-    R = diag((residual' * residual + C * sum(sigma_tt, 3) * C') / T);
+    cov_y_x = C * sum(sigma_tt, 3) * C' / T;
+    if isempty(gpfaObj.Sf)
+        cov_y_f = 0;
+    else
+        var_y_f = cellfun(@(sig_f) dot(gpfaObj.Ns, diag(sig_f)), sigma_f);
+        cov_y_f = diag(var_y_f) / T;
+    end
+    R = diag((residual' * residual) / T + cov_y_x + cov_y_f);
 end
 
 update_tau = ~any(strcmp('taus', gpfaObj.fixed));

@@ -134,11 +134,11 @@ if ~isempty(gpfaObj.Sf)
 end
 
 if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed))
-    warning('skipping signs update since it''s broken right now');
-    % for n=1:gpfaObj.N
-    %     frac = trace(gpfaObj.Kf \ e_ff_n{n}) / (S * logdetK);
-    %     gpfaObj.signs(n) = frac^(-2*S-2);
-    % end
+    dimf = length(gpfaObj.Ns);
+    for n=1:gpfaObj.N
+        gamma_n = 1/(dimf+1)*(log(trace(gpfaObj.Kf \ e_ff_n{n})) - log(dimf) - logdetK);
+        gpfaObj.signs(n) = exp(gamma_n / 2);
+    end
 end
 
 if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed))

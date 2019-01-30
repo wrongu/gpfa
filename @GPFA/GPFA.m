@@ -388,6 +388,7 @@ classdef GPFA
             end
             if ~exist('blockinv', 'file')
                 addpath(fullfile('util', 'block-matrix-inverse-tools'));
+                addpath(fullfile('util', 'logdet'));
             end
         end
     end

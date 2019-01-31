@@ -92,7 +92,7 @@ if update_tau || update_rho
     lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
 
     logtau2s = 2*log(gpfaObj.taus);
-    logtau2s = 2*log(gpfaObj.rhos);
+    logrho2s = 2*log(gpfaObj.rhos);
     
     % Perform some number of gradient steps on timescales
     for step=1:25

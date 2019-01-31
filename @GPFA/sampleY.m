@@ -20,7 +20,7 @@ f_samples = zeros(gpfaObj.T, gpfaObj.N, nSamples);
 if ~isempty(gpfaObj.Sf)
     % Sample possible tuning curves
     S = size(gpfaObj.Kf, 1);
-    f_samples = mvnrnd(mu_f(:)', spblkdiag(sigma_f{:}), nSamples);
+    f_samples = mymvnrnd(mu_f(:)', full(spblkdiag(sigma_f{:})), nSamples);
     f_samples = reshape(f_samples, S, gpfaObj.N, nSamples);
     % For each sampled tuning curve, repeat it as many times as it appears per session (convert from
     % size [S x N x nSamples] to [T x N x nSamples]

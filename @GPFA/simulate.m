@@ -14,9 +14,7 @@ end
 if ~isempty(gpfaObj.Sf)
     % Draw values of f from the prior
     dimf = size(gpfaObj.Kf, 1);
-    mu_f = zeros(dimf, gpfaObj.N);
-    f_sample = mvnrnd(mu_f(:), kron(spdiag(gpfaObj.signs.^2), gpfaObj.Kf));
-    f = reshape(f_sample, dimf, gpfaObj.N);
+    f = gpfaObj.signs .* real(sqrtm(gpfaObj.Kf) * randn(dimf, gpfaObj.N));
     mu_Y = mu_Y + f(gpfaObj.Sf_ord, :);
 else
     f = [];

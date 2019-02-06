@@ -42,6 +42,7 @@ classdef GPFA
         Gamma % [TL x TL] (sparse matrix) Kronecker of (C'*inv(R)*C) and eye(T), adjusted for missing data.
         Cov   % Posterior covariance matrix, inv(inv(K) + Gamma), computed stably for the case when inv(K) is poorly conditioned
         %% --- Useful things for stimulus GP tuning ---
+        uSf    % Unique values of Sf, per row
         Sf_ord % Ordinal values for GP stimuli Sf, usable as indices into Ns and Kf
         Ns     % Ns(i) contains the number of trials where stimulus i appeared, corresponding to unique values of Sf_ord
         Kf     % Precomputed GP Kernel for stimulus tuning
@@ -93,7 +94,7 @@ classdef GPFA
         function gpfaObj = setFields(gpfaObj, varargin)
             %% Ensure no protected fields are being written
             % TODO - is there an introspective programmatic way to get these?
-            protectedFields = {'isKernelToeplitz', 'K', 'Gamma', 'Cov', 'Ns', 'ss2'};
+            protectedFields = {'isKernelToeplitz', 'K', 'Gamma', 'Cov', 'Ns', 'ss2', 'Kf', 'Sf_ord', 'uSf'};
             
             %% Copy fields from varargin
             allProps = properties(gpfaObj);
@@ -203,8 +204,8 @@ classdef GPFA
             %% Precompute things for stimulus tuning
             
             if ~isempty(gpfaObj.Sf)
-                uniqueStim = unique(gpfaObj.Sf, 'rows');
-                dim_f = size(uniqueStim, 1);
+                gpfaObj.uSf = unique(gpfaObj.Sf, 'rows');
+                dim_f = size(gpfaObj.uSf, 1);
                 
                 if isempty(gpfaObj.stim_dist_fun)
                     warning('Sf but no stim_dist_fun given; naively assuming euclidean distances!');
@@ -213,12 +214,12 @@ classdef GPFA
                 
                 gpfaObj.Ns = zeros(dim_f, 1);
                 for iStim=1:dim_f
-                    matches = all(gpfaObj.Sf == uniqueStim(iStim, :), 2);
+                    matches = all(gpfaObj.Sf == gpfaObj.uSf(iStim, :), 2);
                     gpfaObj.Ns(iStim) = sum(matches);
                     gpfaObj.Sf_ord(matches) = iStim;
                     
                     for jStim=1:dim_f
-                        gpfaObj.ss2(iStim, jStim) = gpfaObj.stim_dist_fun(uniqueStim(iStim, :), uniqueStim(jStim, :))^2;
+                        gpfaObj.ss2(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :))^2;
                     end
                 end
                 
@@ -261,8 +262,8 @@ classdef GPFA
         end
         
         %% Inference
-        [mu_x, sigma_x] = inferX(gpfaObj)
-        [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj) % Joint inference of x with tuning curves
+        [mu_x, sigma_x] = inferX(gpfaObj, queryTimes)
+        [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj, queryTimes, queryStims, iters)
         
         %% Learning
         [gpfaObj, Q, H] = emStep(gpfaObj, itr)
@@ -390,7 +391,7 @@ classdef GPFA
                 sig = gpfaObj.sigs(l);
                 tau = gpfaObj.taus(l);
                 rho = gpfaObj.rhos(l);
-                Kcell{l} = sig^2 * exp(-timeDiffs2 / (2 * tau^2)) + rho^2 * speye(gpfaObj.T);
+                Kcell{l} = sig^2 * exp(-timeDiffs2 / (2 * tau^2)) + rho^2 * speye(size(timeDiffs2));
             end
             
             gpfaObj.K = spblkdiag(Kcell{:});

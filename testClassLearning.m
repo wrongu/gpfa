@@ -76,6 +76,24 @@ ylabel('neurons');
 title('residuals (predict Y with ground truth model)');
 colorbar;
 
+%% Test inference at different 'query' times
+
+disp('query');
+queryTimes = gpfa.times + .5;
+[mu_x_q, sigma_x_q] = gpfa.inferX(queryTimes);
+variances_q = diag(sigma_x_q);
+
+figure;
+hold on;
+colors = lines(L);
+for l=1:L
+    stdev = sqrt(variances((l-1)*T+1:l*T));
+    errorbar(gpfa.times, mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
+    stdev_q = sqrt(variances_q((l-1)*T+1:l*T));
+    errorbar(queryTimes, mu_x_q(:, l), sqrt(stdev_q) / 2, 'Color', colors(l, :)/2);
+end
+title('Inferred X at times vs at interpolated times');
+
 %% Test full learning and monotonic increase of 'Q'
 
 iters = 500;

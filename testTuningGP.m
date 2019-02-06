@@ -83,9 +83,38 @@ colorbar;
 subplot(3,1,3); hold on;
 colors = lines(N);
 for n=1:N
-    plot(unique(Sf), fTrue(:, n), 'LineWidth', 2, 'Color', colors(n, :));
-    errorbar(unique(Sf), mu_f(:, n), sqrt(diag(sigma_f{n})), 'Color', colors(n, :));
+    plot(gpfa.uSf, fTrue(:, n), 'LineWidth', 2, 'Color', colors(n, :));
+    errorbar(gpfa.uSf, mu_f(:, n), sqrt(diag(sigma_f{n})), 'Color', colors(n, :));
 end
+
+%% Test inference at 'queried' points
+
+disp('query');
+queryTimes = gpfa.times + 0.5;
+queryF = stims;
+[mu_x_q, sigma_x_q, mu_f_q, sigma_f_q] = gpfa.inferMeanFieldXF(queryTimes, queryF);
+variances_q = diag(sigma_x_q);
+
+figure;
+subplot(2,1,1);
+hold on;
+colors = lines(L);
+for l=1:L
+    stdev = sqrt(variances((l-1)*T+1:l*T));
+    errorbar(gpfa.times, mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
+    stdev_q = sqrt(variances_q((l-1)*T+1:l*T));
+    errorbar(queryTimes, mu_x_q(:, l), sqrt(stdev_q) / 2, 'Color', colors(l, :)/2);
+end
+axis tight;
+
+subplot(2,1,2);
+hold on;
+colors = lines(N);
+for n=1:N
+    errorbar(gpfa.uSf, mu_f(:, n), sqrt(diag(sigma_f{n})), '-o', 'Color', colors(n, :));
+    errorbar(queryF, mu_f_q(:, n), sqrt(diag(sigma_f_q{n})), 'Color', colors(n, :)/2);
+end
+axis tight;
 
 %% Test full learning and monotonic increase of 'Q'
 
@@ -150,8 +179,8 @@ colorbar;
 subplot(3,1,3); hold on;
 colors = lines(N);
 for n=1:N
-    plot(unique(Sf), fTrue(:, n), 'LineWidth', 2, 'Color', colors(n, :));
-    errorbar(unique(Sf), mu_f(:, n), sqrt(diag(sigma_f{n})), 'Color', colors(n, :));
+    plot(gpfa.uSf, fTrue(:, n), 'LineWidth', 2, 'Color', colors(n, :));
+    errorbar(gpfa.uSf, mu_f(:, n), sqrt(diag(sigma_f{n})), 'Color', colors(n, :));
 end
 title('tuning curves estimated with fitted model');
 

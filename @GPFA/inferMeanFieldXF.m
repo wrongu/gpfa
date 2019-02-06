@@ -17,7 +17,7 @@ if length(queryTimes) == length(gpfaObj.times) && all(queryTimes == gpfaObj.time
     nTimePad = 0;
     newT = gpfaObj.T;
 else
-    allTimes = [gpfaObj.times; setdiff(queryTimes, gpfaObj.times)];
+    allTimes = [gpfaObj.times setdiff(queryTimes, gpfaObj.times)];
     newT = length(allTimes);
     [~, queryTimeIdx] = ismember(queryTimes, allTimes);
     nTimePad = newT - gpfaObj.T;
@@ -42,7 +42,7 @@ if all(size(queryStims) == size(gpfaObj.uSf)) && all(queryStims(:) == gpfaObj.uS
     % Compute sigma_f using standard method
     for n=N:-1:1
         K = gpfaObj.signs(n)^2 * gpfaObj.Kf;
-        G = spdiag(Ns) / gpfaObj.R(n);
+        G = spdiag(gpfaObj.Ns) / gpfaObj.R(n);
         
         % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
         sigma_f{n} = K - K * G * ((eye(size(K)) + K * G) \ K);

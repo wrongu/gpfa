@@ -12,7 +12,7 @@ if length(queryTimes) == length(gpfaObj.times) && all(queryTimes == gpfaObj.time
     nPad = 0;
     T = gpfaObj.T;
 else
-    allTimes = [gpfaObj.times; setdiff(queryTimes, gpfaObj.times)];
+    allTimes = [gpfaObj.times setdiff(queryTimes, gpfaObj.times)];
     T = length(allTimes);
     [~, queryIdx] = ismember(queryTimes, allTimes);
     nPad = T - gpfaObj.T;

@@ -1,16 +1,8 @@
-function [mu_x, sigma_x] = inferX(gpfaObj, Y)
-
-if ~exist('Y', 'var')
-    Y = gpfaObj.Y;
-else
-    gpfaObj.Y = Y;
-    gpfaObj = gpfaObj.updateGamma(Y);
-    gpfaObj = gpfaObj.updateCov();
-end
+function [mu_x, sigma_x] = inferX(gpfaObj)
 
 % TODO - faster implementation when there is no missing data ?
 
-residual = Y - gpfaObj.b';
+residual = gpfaObj.Y - gpfaObj.b';
 if ~isempty(gpfaObj.S)
     residual = residual - gpfaObj.S * gpfaObj.D';
 end

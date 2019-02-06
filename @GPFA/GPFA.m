@@ -210,16 +210,17 @@ classdef GPFA
         end
         
         %% Inference
-        [mu_x, sigma_x] = inferX(gpfaObj, Y)
-        [mu_Y] = predictY(gpfaObj, mu_x)
-        [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x)
+        [mu_x, sigma_x] = inferX(gpfaObj)
+        [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj) % Joint inference of x with tuning curves
         
         %% Learning
         [gpfaObj, Q, H] = emStep(gpfaObj, itr)
         [bestFit, Qs, Hs] = fitEM(gpfaObj, maxIters, convergenceTol)
         
         %% Simulation / Generate Data
-        [Yhat, x] = simulate(gpfaObj)
+        [Yhat, x, f] = simulate(gpfaObj)
+        [mu_Y] = predictY(gpfaObj, mu_x, mu_f)
+        [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x, mu_f, sigma_f)
     end
     
     methods (Access = protected)

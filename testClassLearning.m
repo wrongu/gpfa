@@ -54,7 +54,7 @@ colorbar;
 %% Test inference
 
 disp('infer');
-[mu_x, sigma_x] = gpfa.inferX(simData);
+[mu_x, sigma_x] = gpfa.inferX();
 variances = diag(sigma_x);
 
 figure;
@@ -80,7 +80,7 @@ colorbar;
 
 iters = 500;
 % init = gpfa.setFields('fixed', {'taus'});
-init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S, 'rho_decay', 10);
+init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S);
 [bestFit, Qs] = init.fitEM(iters, 1e-6);
 
 figure;
@@ -93,8 +93,10 @@ subplot(2,2,1);
 scatter(gpfa.b, bestFit.b);
 title('fit vs true offsets ''b''');
 axis equal;
-subplot(2,2,2);
-scatter(gpfa.C(:), bestFit.C(:));
+subplot(2,2,2); hold on;
+for l=1:L
+    plot(gpfa.C(:,l), bestFit.C(:,l), 'o', 'Color', colors(l, :));
+end
 title('fit vs true loadings ''C''');
 axis equal;
 subplot(2,2,3);
@@ -113,7 +115,7 @@ end
 %% Re-test inference using best-fit model
 
 disp('infer');
-[mu_x, sigma_x] = bestFit.inferX(simData);
+[mu_x, sigma_x] = bestFit.inferX();
 variances = diag(sigma_x);
 
 figure;

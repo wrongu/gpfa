@@ -54,7 +54,7 @@ colorbar;
 %% Test inference
 
 disp('infer');
-[mu_x, sigma_x] = gpfa.inferX(simData);
+[mu_x, sigma_x] = gpfa.inferX();
 variances = diag(sigma_x);
 
 figure;
@@ -113,7 +113,7 @@ end
 %% Re-test inference using best-fit model
 
 disp('infer');
-[mu_x, sigma_x, e_xx] = bestFit.inferX(simData);
+[mu_x, sigma_x, e_xx] = bestFit.inferX();
 variances = diag(sigma_x);
 
 figure;

@@ -127,45 +127,46 @@ if ~isempty(gpfaObj.Sf)
     Hf = 0;
     S = length(gpfaObj.Ns);
     logdetK = logdet(gpfaObj.Kf);
+    e_ff_n = cell(1, gpfaObj.N);
     for n=gpfaObj.N:-1:1
         e_ff_n{n} = sigma_f{n} + mu_f(:,n)*mu_f(:,n)';
         Qf = Qf - 1/2*(trace((gpfaObj.signs(n)^2 * gpfaObj.Kf) \ e_ff_n{n}) + gpfaObj.signs(n)^(2*S)*logdetK);
-        Hf = Hf + 1/2*logdet(2*pi*exp(1)*sigma_f{n});
+        Hfn = 1/2*logdet(2*pi*exp(1)*sigma_f{n});
+        % Numerical precision and lack of regularization on sigma_f means near-zero determinant
+        % cases appear like imaginary Hfn and negative determinant. Clip Hfn here.
+        Hf = Hf + max(0, real(Hfn));
     end
     Q = Q + Qf;
     H = H + Hf;
 end
 
 if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed))
-    dimf = length(gpfaObj.Ns);
-    for n=1:gpfaObj.N
-        gamma_n = 1/(dimf+1)*(log(trace(gpfaObj.Kf \ e_ff_n{n})) - log(dimf) - logdetK);
-        gpfaObj.signs(n) = exp(gamma_n / 2);
-    end
+    warning('Learning of ''signs'' not stable yet. Skipping.');
+    % dimf = length(gpfaObj.Ns);
+    % for n=1:gpfaObj.N
+    %     gamma_n = 1/(dimf+1)*(log(trace(gpfaObj.Kf \ e_ff_n{n})) - log(dimf) - logdetK);
+    %     gpfaObj.signs(n) = exp(gamma_n / 2);
+    % end
 end
 
-if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed))
-    lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
-    
-    logtauf2 = 2*log(gpfaObj.tauf);
-    
-    % Perform some number of gradient steps on tau_f
-    for step=1:25
-        % Get gradient
-        dQ_dlogtauf2 = gpfaObj.stimScaleDeriv(mu_f, sigma_f);
-        
-        % Step tau_f
-        logtauf2 = logtauf2 + lr * dQ_dlogtauf2;
-        gpfaObj.tauf = exp(logtauf2 / 2);
-        
-        % Update Kf for next iteration
-        gpfaObj = gpfaObj.updateKernelF();
-        
-        % Break when changes get small
-        if abs(lr*dQ_dlogtauf2) < 1e-9
-            break
-        end
+    function [nQf, gradNegQf] = negQf(logtauf2)
+        tmpObj = gpfaObj;
+        tmpObj.tauf = exp(logtauf2/2);
+        tmpObj = tmpObj.updateKernelF();
+        newLogDetK = logdet(tmpObj.Kf);
+        if ~isreal(newLogDetK), newLogDetK = 0; end
+        nQf = sum(arrayfun(@(n) 1/2*(trace((tmpObj.signs(n)^2 * tmpObj.Kf) \ e_ff_n{n}) + tmpObj.signs(n)^(2*S)*newLogDetK), 1:tmpObj.N));
+        gradNegQf = -tmpObj.stimScaleDeriv(mu_f, sigma_f);
     end
+
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed))
+    % In practice, gradient steps with learning rate 'lr' was found to be unstable for all parameter
+    % regimes tested. fminunc is a bit slower but has better guarantees.
+    opts = optimoptions('fminunc', 'Algorithm', 'trust-region', 'SpecifyObjectiveGradient', true, ...
+        'Display', 'none');
+    [newLogTauf, newNegQf] = fminunc(@negQf, 2*log(gpfaObj.tauf), opts);
+    assert(-newNegQf >= Qf, 'tauf optimization failed!');
+    gpfaObj.tauf = exp(newLogTauf / 2);
 end
 
 gpfaObj.b = b;

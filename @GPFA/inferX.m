@@ -1,5 +1,7 @@
 function [mu_x, sigma_x] = inferX(gpfaObj)
 
+assert(isempty(gpfaObj.Sf), 'Sf must be empty to infer X alone, otherwise use GPFA.inferMeanFieldXF');
+
 % TODO - faster implementation when there is no missing data ?
 
 residual = gpfaObj.Y - gpfaObj.b';

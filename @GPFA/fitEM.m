@@ -6,7 +6,7 @@ Qs = zeros(1, maxIters);
 Hs = zeros(1, maxIters);
 tstart = tic;
 
-allParams = {'R', 'C', 'D', 'b', 'taus', 'rhos'};
+allParams = {'R', 'C', 'D', 'b', 'taus', 'rhos', 'tauf', 'signs'};
 lastParamValues = concatAllParams(gpfaObj, allParams);
 
 for itr=1:maxIters

@@ -21,6 +21,9 @@ classdef GPFA
         taus % [1 x L] timescale of each latent
         sigs % [1 x L] slow variability of each latent
         rhos % [1 x L] additional instantaneous variability of each latent
+        taus_alpha % [1 x L] alpha (shape) parameter of gamma prior on taus
+        taus_beta  % [1 x L] beta (rate) parameter of gamma prior on taus
+        rho_scale % mean of exponential prior on 'rho' values
         %% --- Stimulus-GP Kernel Parameters ---
         stim_dist_fun % Function taking in ([1 x Mf], [1 x Mf]) pairs of stimuli and returning a non-negative 'distance' between them
         signs % [1 x N] variance of stimulus dependence per neuron (essentially quantifies net stimulus modulation)
@@ -29,7 +32,6 @@ classdef GPFA
         fixed % cell array of fixed parameter names
         lr    % learning rate for gradient-based updates
         lr_decay  % half-life of learning rate for simulated annealing
-        rho_scale % mean of exponential prior on 'rho' values
     end
     
     properties% (Access = protected)
@@ -164,6 +166,16 @@ classdef GPFA
             
             if isempty(gpfaObj.taus)
                 gpfaObj.taus = 10 * effectiveDt * ones(1, gpfaObj.L);
+            end
+            
+            % By default, taus_alpha and taus_beta form an exponential prior with a large mean
+            % (as near as we can get to a flat prior)
+            if isempty(gpfaObj.taus_alpha)
+                gpfaObj.taus_alpha = ones(1, gpfaObj.L);
+            end
+            
+            if isempty(gpfaObj.taus_beta)
+                gpfaObj.taus_beta = ones(1, gpfaObj.L) / 100;
             end
             
             if isempty(gpfaObj.sigs)
@@ -338,20 +350,30 @@ classdef GPFA
             dQ_dlogrho2 = zeros(size(gpfaObj.taus));
             dt2 = (gpfaObj.times - gpfaObj.times').^2;
             for l=1:gpfaObj.L
+                tau = gpfaObj.taus(l);
+                rho = gpfaObj.rhos(l);
+                % Get K and E[xx'] matrices
                 subs = (1:gpfaObj.T) + (l-1)*gpfaObj.T;
                 Kl = gpfaObj.K(subs, subs);
                 Kli = inv(Kl);
                 e_xx_l = mu_x(:,l) .* mu_x(:,l)' + cov_x(subs, subs);
-                log_prior_rho = -gpfaObj.rhos(l) / gpfaObj.rho_scale(l);
-                Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x(subs, subs), Kli) + logdet(2*pi*Kl)) + log_prior_rho; %#ok<MINV>
+                % Compute prior values
+                log_prior_rho = -rho / gpfaObj.rho_scale(l);
+                alph = gpfaObj.taus_alpha(l);
+                beta = gpfaObj.taus_beta(l);
+                log_prior_tau = alph*log(beta) + alph*log(tau) - beta*tau - gammaln(alph) + log(1/2);
+                % Compute Q for latent l
+                Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x(subs, subs), Kli) + logdet(2*pi*Kl)) ...
+                    + log_prior_rho + log_prior_tau; %#ok<MINV>
+                % Compute derivatives
                 dQ_dKl = Kli * e_xx_l * Kli - Kli; %#ok<MINV>
-                dt2_div_tau2 = dt2./(2*gpfaObj.taus(l)^2);
+                dt2_div_tau2 = dt2./(2*tau^2);
                 dKl_dlogtaul2 = 0.5 * gpfaObj.sigs(l)^2 * exp(-dt2_div_tau2) .* dt2_div_tau2;
-                % Matrix chain rule
-                dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:);
+                % Matrix chain rule plus prior gradient
+                dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:) + (alph - beta*tau)/2;
                 % Rho is easier since it doesn't depend on time differences; include a derivative on
                 % the prior
-                dQ_dlogrho2(l) = sum(diag(dQ_dKl))*gpfaObj.rhos(l)^2 - gpfaObj.rhos(l)/(2*gpfaObj.rho_scale(l));
+                dQ_dlogrho2(l) = sum(diag(dQ_dKl))*rho^2 - rho/(2*gpfaObj.rho_scale(l));
             end
         end
         

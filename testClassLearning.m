@@ -5,10 +5,12 @@ T = 100;
 L = 3;
 M = 5;
 
+os = ones(1, L);
+
 R = .05 * exp(randn(N, 1) * .2);
-taus = linspace(5, 30, L);
-sigs = .3 * ones(1, L);
-rhos = .01 * ones(1, L);
+taus = gamrnd(2, 10, 1, L);
+sigs = .3 * os;
+rhos = .01 * os;
 
 b = 10 * rand(N, 1);
 C = zeros(N, L);
@@ -98,7 +100,7 @@ title('Inferred X at times vs at interpolated times');
 
 iters = 500;
 % init = gpfa.setFields('fixed', {'taus'});
-init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S);
+init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S, 'taus_alpha', 2*os, 'taus_beta', .1*os);
 [bestFit, Qs] = init.fitEM(iters, 1e-6);
 
 figure;

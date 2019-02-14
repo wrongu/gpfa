@@ -1,43 +1,50 @@
-function [bestFit, Qs, Hs] = fitEM(gpfaObj, maxIters, convergenceTol)
+function [bestFit, Qs, Hs, converged] = fitEM(gpfaObj, maxIters, convergenceTol, startIter)
 
 if ~exist('convergenceTol', 'var'), convergenceTol = 1e-6; end
 
-Qs = zeros(1, maxIters);
-Hs = zeros(1, maxIters);
+if ~exist('startIter', 'var'), startIter = 1; end
+numIters = (maxIters-startIter)+1;
+
+Qs = zeros(1, numIters);
+Hs = zeros(1, numIters);
 tstart = tic;
+converged = false;
 
 allParams = {'R', 'C', 'D', 'b', 'taus', 'rhos', 'tauf', 'signs'};
 lastParamValues = concatAllParams(gpfaObj, allParams);
 
-for itr=1:maxIters
+for idx=1:numIters
+    itr = startIter+idx-1;
+
     % TODO (here or inside emStep): block updates of parameters that depend on each other
-    [newObj, Qs(itr), Hs(itr)] = gpfaObj.emStep(itr);
+    [newObj, Qs(idx), Hs(idx)] = gpfaObj.emStep(itr);
     elapsed = toc(tstart);
     
     newParamValues = concatAllParams(newObj, allParams);
     delta = norm(lastParamValues - newParamValues);
     if delta < convergenceTol
+        converged = true;
         break
     end
     
-    if itr >= 2
-        deltaQ = (Qs(itr)+Hs(itr))-(Qs(itr-1)+Hs(itr-1));
+    if idx >= 2
+        deltaQ = (Qs(idx)+Hs(idx))-(Qs(idx-1)+Hs(idx-1));
     else
         deltaQ = inf;
     end
     
     fprintf('EM iteration %d/%d\tQ = %.2e\tdelta Q = %.2e\tdelta params = %.2e\ttime per iteration = %.2fs\n', ...
-        itr, maxIters, Qs(itr)+Hs(itr), deltaQ, delta, elapsed / itr);
+        itr, maxIters, Qs(idx)+Hs(idx), deltaQ, delta, elapsed / idx);
     
     gpfaObj = newObj;
     lastParamValues = newParamValues;
 end
 
-if itr == maxIters
+if ~converged
     warning('EM reached max iterations; potentially exiting before convergence');
 else
-    Qs = Qs(1:itr);
-    Hs = Hs(1:itr);
+    Qs = Qs(1:idx);
+    Hs = Hs(1:idx);
 end
 
 bestFit = gpfaObj;

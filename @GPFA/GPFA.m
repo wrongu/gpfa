@@ -228,12 +228,13 @@ classdef GPFA
                 for iStim=1:dim_f
                     matches = all(gpfaObj.Sf == gpfaObj.uSf(iStim, :), 2);
                     gpfaObj.Ns(iStim) = sum(matches);
-                    gpfaObj.Sf_ord(matches) = iStim;
                     
                     for jStim=1:dim_f
                         gpfaObj.ss2(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :))^2;
                     end
                 end
+                
+                [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
                 
                 assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
                     
@@ -279,7 +280,7 @@ classdef GPFA
         
         %% Learning
         [gpfaObj, Q, H] = emStep(gpfaObj, itr)
-        [bestFit, Qs, Hs] = fitEM(gpfaObj, maxIters, convergenceTol)
+        [bestFit, Qs, Hs, converged] = fitEM(gpfaObj, maxIters, convergenceTol, startIter)
         
         %% Simulation / Generate Data
         [Yhat, x, f] = simulate(gpfaObj)

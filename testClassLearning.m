@@ -57,14 +57,13 @@ colorbar;
 
 disp('infer');
 [mu_x, sigma_x] = gpfa.inferX();
-variances = diag(sigma_x);
 
 figure;
 subplot(2,1,1);
 hold on;
 colors = lines(L);
 for l=1:L
-    stdev = sqrt(variances((l-1)*T+1:l*T));
+    stdev = sqrt(diag(sigma_x{l}));
     errorbar(mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
     plot(xTrue(:, l), 'Color', colors(l, :), 'LineWidth', 2);
 end
@@ -83,15 +82,14 @@ colorbar;
 disp('query');
 queryTimes = gpfa.times + .5;
 [mu_x_q, sigma_x_q] = gpfa.inferX(queryTimes);
-variances_q = diag(sigma_x_q);
 
 figure;
 hold on;
 colors = lines(L);
 for l=1:L
-    stdev = sqrt(variances((l-1)*T+1:l*T));
+    stdev = sqrt(diag(sigma_x{l}));
     errorbar(gpfa.times, mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
-    stdev_q = sqrt(variances_q((l-1)*T+1:l*T));
+    stdev_q = sqrt(diag(sigma_x_q{l}));
     errorbar(queryTimes, mu_x_q(:, l), sqrt(stdev_q) / 2, 'Color', colors(l, :)/2);
 end
 title('Inferred X at times vs at interpolated times');
@@ -100,7 +98,8 @@ title('Inferred X at times vs at interpolated times');
 
 iters = 500;
 % init = gpfa.setFields('fixed', {'taus'});
-init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S, 'taus_alpha', 2*os, 'taus_beta', .1*os);
+init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S, 'taus_alpha', 2*os, ...
+    'taus_beta', .1*os, 'kernel_update_freq', 10);
 [bestFit, Qs] = init.fitEM(iters, 1e-6);
 
 figure;
@@ -136,14 +135,13 @@ end
 
 disp('infer');
 [mu_x, sigma_x] = bestFit.inferX();
-variances = diag(sigma_x);
 
 figure;
 subplot(2,1,1);
 hold on;
 colors = lines(L);
 for l=1:L
-    stdev = sqrt(variances((l-1)*T+1:l*T));
+    stdev = sqrt(diag(sigma_x{l}));
     errorbar(mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
     plot(xTrue(:, l), 'Color', colors(l, :), 'LineWidth', 2);
 end

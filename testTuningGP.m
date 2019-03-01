@@ -59,15 +59,14 @@ colorbar;
 
 disp('infer');
 [mu_x, sigma_x, mu_f, sigma_f] = gpfa.inferMeanFieldXF();
-variances = diag(sigma_x);
 
 figure;
 subplot(3,1,1);
 hold on;
 colors = lines(L);
 for l=1:L
-    stdev = sqrt(variances((l-1)*T+1:l*T));
-    errorbar(mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
+    stdev = sqrt(sqrt(diag(sigma_x{l})));
+    errorbar(mu_x(:, l), stdev / 2, 'Color', colors(l, :));
     plot(xTrue(:, l), 'Color', colors(l, :), 'LineWidth', 2);
 end
 title('ground truth versus inferred values of latent X');
@@ -93,17 +92,16 @@ disp('query');
 queryTimes = gpfa.times + 0.5;
 queryF = stims;
 [mu_x_q, sigma_x_q, mu_f_q, sigma_f_q] = gpfa.inferMeanFieldXF(queryTimes, queryF);
-variances_q = diag(sigma_x_q);
 
 figure;
 subplot(2,1,1);
 hold on;
 colors = lines(L);
 for l=1:L
-    stdev = sqrt(variances((l-1)*T+1:l*T));
-    errorbar(gpfa.times, mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
-    stdev_q = sqrt(variances_q((l-1)*T+1:l*T));
-    errorbar(queryTimes, mu_x_q(:, l), sqrt(stdev_q) / 2, 'Color', colors(l, :)/2);
+    stdev = sqrt(diag(sigma_x{l}));
+    errorbar(gpfa.times, mu_x(:, l), stdev / 2, 'Color', colors(l, :));
+    stdev_q = sqrt(diag(sigma_x_q{l}));
+    errorbar(queryTimes, mu_x_q(:, l), stdev_q / 2, 'Color', colors(l, :)/2);
 end
 axis tight;
 
@@ -155,15 +153,14 @@ end
 
 disp('infer');
 [mu_x, sigma_x, mu_f, sigma_f] = bestFit.inferMeanFieldXF();
-variances = diag(sigma_x);
 
 figure;
 subplot(3,1,1);
 hold on;
 colors = lines(L);
 for l=1:L
-    stdev = sqrt(variances((l-1)*T+1:l*T));
-    errorbar(mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
+    stdev = sqrt(diag(sigma_x{l}));
+    errorbar(mu_x(:, l), stdev / 2, 'Color', colors(l, :));
     plot(xTrue(:, l), 'Color', colors(l, :), 'LineWidth', 2);
 end
 title('ground truth versus (fit) inferred values of latent X');

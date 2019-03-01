@@ -26,24 +26,24 @@ if ~isempty(gpfaObj.Sf)
     stim_predict = stim_predict + mu_f(gpfaObj.Sf_ord, :);
 end
 
-% sigma_tt will contain values of sigma_x at all t1==t2
-sigma_tt = zeros(L, L, T);
-for t=1:T
-    sigma_tt(:, :, t) = sigma_x(t:T:T*L, t:T:T*L);
-end
-% Compute E[x'x] from sigma_tt
-e_xx_inner = (mu_x' * mu_x) + sum(sigma_tt, 3);
+% Get the sum of the variances (covariance diagonals) of each latent
+variances = cellfun(@(sig) sum(diag(sig)), sigma_x);
+% Compute E[x'x] under the factorized posterior (zero covariance between latents by assumption)
+e_xx_inner = (mu_x' * mu_x) + diag(variances);
 
 y_resid = Y - b' - stim_predict;
 y_resid(isnan(y_resid)) = 0;
 y_resid_Ri = y_resid ./ R';
 
 logdet_R = sum(log(2*pi*R));
-trace_gamma_sigma = sum(sum(Gamma' .* sigma_x));
+trace_gamma_sigma = sum(arrayfun(@(l) Gamma{l,l}(:)'*sigma_x{l}(:), 1:L));
 Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)) - 2 * sum(sum(y_resid_Ri .* (mu_x * C'))) ...
-    + vec(mu_x)' * Gamma * vec(mu_x) + trace_gamma_sigma);
+    + vec(mu_x)' * cell2mat(Gamma) * vec(mu_x) + trace_gamma_sigma);
 
-H = 1/2*logdet(2*pi*exp(1)*sigma_x);
+% Add kernel component to Q
+Q = Q + gpfaObj.timescaleQ(mu_x, sigma_x);
+
+H = sum(arrayfun(@(l) 1/2*logdet(2*pi*exp(1)*sigma_x{l}), 1:L));
 
 %% M-Step
 
@@ -73,7 +73,7 @@ end
 if ~any(strcmp('R', gpfaObj.fixed))
     residual = (Y - b' - mu_x * C' - stim_predict);
     residual(isnan(residual)) = 0;
-    cov_y_x = C * sum(sigma_tt, 3) * C' / T;
+    cov_y_x = C * diag(variances) * C' / T;
     if isempty(gpfaObj.Sf)
         cov_y_f = 0;
     else
@@ -86,9 +86,7 @@ end
 update_tau = ~any(strcmp('taus', gpfaObj.fixed));
 update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
 
-if update_tau || update_rho
-    [QK, ~, ~] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
-    Q = Q + QK;
+if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 0
     lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
 
     logtau2s = 2*log(gpfaObj.taus);
@@ -97,7 +95,7 @@ if update_tau || update_rho
     % Perform some number of gradient steps on timescales
     for step=1:25
         % Get gradient
-        [~, dQ_dlogtau2, dQ_dlogrho2] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
+        [dQ_dlogtau2, dQ_dlogrho2] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
         
         % Step tau
         if ~any(strcmp('taus', gpfaObj.fixed))
@@ -140,7 +138,7 @@ if ~isempty(gpfaObj.Sf)
     H = H + Hf;
 end
 
-if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed))
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 0
     warning('Learning of ''signs'' not stable yet. Skipping.');
     % dimf = length(gpfaObj.Ns);
     % for n=1:gpfaObj.N
@@ -159,7 +157,7 @@ end
         gradNegQf = -tmpObj.stimScaleDeriv(mu_f, sigma_f);
     end
 
-if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed))
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 0
     % In practice, gradient steps with learning rate 'lr' was found to be unstable for all parameter
     % regimes tested. fminunc is a bit slower but has better guarantees.
     opts = optimoptions('fminunc', 'Algorithm', 'trust-region', 'SpecifyObjectiveGradient', true, ...

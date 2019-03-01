@@ -10,11 +10,11 @@ else
     end
 end
 
-% Get [TL x nSamples] instances of x. It helps to avoid errors if we doubly ensure that sigma_x is
-% symmetric.
-x_samples = mvnrnd(mu_x(:)', (sigma_x + sigma_x')/2, nSamples);
-% Reshape to [T x L x nSamples]
-x_samples = reshape(x_samples, gpfaObj.T, gpfaObj.L, nSamples);
+% Get [T x L x nSamples] instances of x. It helps to avoid errors if we doubly ensure that sigma_x
+% is symmetric.
+for l=gpfaObj.L:-1:1
+    x_samples(:, l, :) = mvnrnd(mu_x(:)', (sigma_x{l} + sigma_x{l}')/2, nSamples);
+end
 
 f_samples = zeros(gpfaObj.T, gpfaObj.N, nSamples);
 if ~isempty(gpfaObj.Sf)

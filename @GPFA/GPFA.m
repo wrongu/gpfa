@@ -6,9 +6,9 @@ classdef GPFA
         Y % [T x N] data points
         C % [N x L] latents loadings
         R % [N x 1] private variance of each neuron (full covariance is diag(R))
-        S % [T x M] stimulus values (optional - may be empty)
+        S % [T x M] stimulus values for linear-tuning model (optional - may be empty)
+        D % [N x M] stimulus loadings for linear-tuning model (optional - requires S)
         Sf% [T x Mf] stimuli for GP stimulus regression (optional - may be empty)
-        D % [N x M] stimulus loadings (optional - requires S)
         b % [N x 1] bias giving baseline firing rate of each neuron
         times % [1 x T] actual time points (use either 'times' or 'dt', not both)
         dt % [scalar] interval between trials if equi-spaced (use either 'times' or 'dt', not both)
@@ -29,6 +29,7 @@ classdef GPFA
         signs % [1 x N] variance of stimulus dependence per neuron (essentially quantifies net stimulus modulation)
         tauf  % scalar length scale parameter for GP tuning
         %% --- EM settings ---
+        kernel_update_freq % how often (number of iterations) to update the kernel parameters
         fixed % cell array of fixed parameter names
         lr    % learning rate for gradient-based updates
         lr_decay  % half-life of learning rate for simulated annealing
@@ -36,9 +37,9 @@ classdef GPFA
     
     properties% (Access = protected)
         %% --- Precomputed matrices ---
-        K     % [TL x TL] (sparse matrix) kernel-based covariance for (flattened) latents
-        Gamma % [TL x TL] (sparse matrix) Kronecker of (C'*inv(R)*C) and eye(T), adjusted for missing data.
-        Cov   % Posterior covariance matrix, inv(inv(K) + Gamma), computed stably for the case when inv(K) is poorly conditioned
+        K     % [1 x L] cell array of prior covariances, each [T x T]
+        Gamma % [L x L] cell array of data-dependent part of latent covariance matrices, each [T x T]. (Off-diagonal captures explaining away between latents)
+        Cov   % [1 x L] cell array of posterior covariance matrices, inv(inv(K) + Gamma), computed stably for the case when inv(K) is poorly conditioned
         %% --- Useful things for stimulus GP tuning ---
         uSf    % Unique values of Sf, per row
         Sf_ord % Ordinal values for GP stimuli Sf, usable as indices into Ns and Kf. Hence Sf=uSf(Sf_ord,:)
@@ -198,34 +199,22 @@ classdef GPFA
                     gpfaObj.stim_dist_fun = @(s1, s2) sqrt(sum((s1-s2).^2));
                 end
                 
+                ss = zeros(dim_f, dim_f);
                 gpfaObj.Ns = zeros(dim_f, 1);
                 for iStim=1:dim_f
                     matches = all(gpfaObj.Sf == gpfaObj.uSf(iStim, :), 2);
                     gpfaObj.Ns(iStim) = sum(matches);
                     
                     for jStim=1:dim_f
-                        gpfaObj.ss2(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :))^2;
+                        ss(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :));
                     end
                 end
-                
-                [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
                 
                 assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
-                    
-                % Correct for impossible distances that fail to satisfy the triangle inequality
-                if any(isinf(gpfaObj.ss2(:)))
-                    ss = sqrt(gpfaObj.ss2);
-                    idxImpossible = find(triu(isinf(ss)));
-                    for idx=idxImpossible'
-                        [iStim, jStim] = ind2sub(size(ss), idx);
-                        dist_i_x = ss(iStim, :);
-                        dist_j_x = ss(jStim, :);
-                        max_possible_dist = min(dist_i_x + dist_j_x);
-                        ss(iStim, jStim) = max_possible_dist;
-                        ss(jStim, iStim) = max_possible_dist;
-                    end
-                    gpfaObj.ss2 = ss.^2;
-                end
+                
+                gpfaObj.ss2 = GPFA.fixImpossiblePairwiseDists(ss).^2;
+                
+                [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
                 
                 if isempty(gpfaObj.signs), gpfaObj.signs = ones(1, gpfaObj.N); end
                 if isempty(gpfaObj.tauf), gpfaObj.tauf = 1; end
@@ -236,6 +225,7 @@ classdef GPFA
             if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
             if isempty(gpfaObj.lr), gpfaObj.lr = 0.001; end
             if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 100; end
+            if isempty(gpfaObj.kernel_update_freq), gpfaObj.kernel_update_freq = 1; end
             
             gpfaInit = gpfaObj.initialize();
             
@@ -287,7 +277,7 @@ classdef GPFA
             
             % Initialize latent loadings C using top L principal components of data after regressing
             % out the stimulus and smoothing by kernels of each unique 'tau'
-            if ~any(strcmp('C', gpfaObj.fixed))                
+            if ~any(strcmp('C', gpfaObj.fixed))
                 if ~any(isnan(gpfaObj.Y(:)))
                     uTaus = unique(gpfaObj.taus);
                     for i=1:length(uTaus)
@@ -317,29 +307,40 @@ classdef GPFA
                 gpfaObj.R = 10 * nanvar(residuals, [], 1)';
             end
         end
-
+        
         %% Derivative and Q function value w.r.t. GP scales
-        function [Q, dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, mu_x, cov_x)
+        function Q = timescaleQ(gpfaObj, mu_x, cov_x)
             Q = 0;
+            for l=1:gpfaObj.L
+                tau = gpfaObj.taus(l);
+                rho = gpfaObj.rhos(l);
+                alph = gpfaObj.taus_alpha(l);
+                beta = gpfaObj.taus_beta(l);
+                % Get prior covariance matrix
+                Kl = gpfaObj.K{l};
+                Kli = inv(Kl);
+                % Compute prior values
+                log_prior_rho = -rho / gpfaObj.rho_scale(l);
+                log_prior_tau = alph*log(beta) + alph*log(tau) - beta*tau - gammaln(alph) + log(1/2);
+                % Compute Q for latent l
+                Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x{l}, Kli) + logdet(2*pi*Kl)) ...
+                    + log_prior_rho + log_prior_tau; %#ok<MINV>
+            end
+        end
+        
+        function [dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, mu_x, cov_x)
             dQ_dlogtau2 = zeros(size(gpfaObj.taus));
             dQ_dlogrho2 = zeros(size(gpfaObj.taus));
             dt2 = (gpfaObj.times - gpfaObj.times').^2;
             for l=1:gpfaObj.L
                 tau = gpfaObj.taus(l);
                 rho = gpfaObj.rhos(l);
-                % Get K and E[xx'] matrices
-                subs = (1:gpfaObj.T) + (l-1)*gpfaObj.T;
-                Kl = gpfaObj.K(subs, subs);
-                Kli = inv(Kl);
-                e_xx_l = mu_x(:,l) .* mu_x(:,l)' + cov_x(subs, subs);
-                % Compute prior values
-                log_prior_rho = -rho / gpfaObj.rho_scale(l);
                 alph = gpfaObj.taus_alpha(l);
                 beta = gpfaObj.taus_beta(l);
-                log_prior_tau = alph*log(beta) + alph*log(tau) - beta*tau - gammaln(alph) + log(1/2);
-                % Compute Q for latent l
-                Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x(subs, subs), Kli) + logdet(2*pi*Kl)) ...
-                    + log_prior_rho + log_prior_tau; %#ok<MINV>
+                % Get K and E[xx'] matrices
+                Kl = gpfaObj.K{l};
+                Kli = inv(Kl);
+                e_xx_l = mu_x(:,l) .* mu_x(:,l)' + cov_x{l};
                 % Compute derivatives
                 dQ_dKl = Kli * e_xx_l * Kli - Kli; %#ok<MINV>
                 dt2_div_tau2 = dt2./(2*tau^2);
@@ -370,8 +371,6 @@ classdef GPFA
         
         %% Functions to update 'precomupted' terms when underlying parameters change
         function gpfaObj = updateK(gpfaObj)
-            Kcell = cell(1, gpfaObj.L);
-            
             % Create array of timepoints for each measurement, either from 'dt' or simply use
             % 'times'
             if ~isempty(gpfaObj.dt)
@@ -388,10 +387,8 @@ classdef GPFA
                 sig = gpfaObj.sigs(l);
                 tau = gpfaObj.taus(l);
                 rho = gpfaObj.rhos(l);
-                Kcell{l} = sig^2 * exp(-timeDiffs2 / (2 * tau^2)) + rho^2 * speye(size(timeDiffs2));
+                gpfaObj.K{l} = sig^2 * exp(-timeDiffs2 / (2 * tau^2)) + rho^2 * speye(size(timeDiffs2));
             end
-            
-            gpfaObj.K = spblkdiag(Kcell{:});
         end
         
         function gpfaObj = updateGamma(gpfaObj, Y)
@@ -400,8 +397,11 @@ classdef GPFA
             if ~any(isnan(Y(:)))
                 % CRiC is C'*inv(R)*C but we have R as the elements of a diagonal...
                 CRiC = gpfaObj.C' * (gpfaObj.C ./ gpfaObj.R);
-                gpfaObj.T = size(Y, 1);
-                gpfaObj.Gamma = kron(CRiC, speye(gpfaObj.T));
+                for l1=1:gpfaObj.L
+                    for l2=1:gpfaObj.L
+                        gpfaObj.Gamma{l1, l2} = CRiC(l1, l2) * speye(gpfaObj.T);
+                    end
+                end
             else
                 valid = ~isnan(Y);
                 % validRi is [N x T] and contains elements of R-inverse wherever there is valid data.
@@ -411,17 +411,13 @@ classdef GPFA
                 % Final result is [L x L x T]. It will be reshaped into the full Gamma matrix later.
                 gammaDense = reshape(sum(partialCC .* reshape(validRi, 1, 1, gpfaObj.N, gpfaObj.T), 3), [gpfaObj.L, gpfaObj.L, gpfaObj.T]);
                 % Allocate space for [L x L] cell array of diagonal matrices
-                gammaBlocks = cell(gpfaObj.L);
+                gpfaObj.Gamma = cell(gpfaObj.L);
                 for l1=1:gpfaObj.L
                     for l2=1:gpfaObj.L
-                        gammaBlocks{l1, l2} = spdiag(squeeze(gammaDense(l1, l2, :)));
+                        gpfaObj.Gamma{l1, l2} = spdiag(squeeze(gammaDense(l1, l2, :)));
                     end
                 end
-                gpfaObj.Gamma = cell2mat(gammaBlocks);
             end
-            
-            % Sanity check
-            assert(issparse(gpfaObj.Gamma));
         end
         
         function gpfaObj = updateCov(gpfaObj)
@@ -430,17 +426,12 @@ classdef GPFA
             %   inv(A+B) = inv(A) - inv(A)*B*inv(I+inv(A)*B)*inv(A)
             % which, substituting inv(A) as K gives
             %   inv(inv(K) + G) = K - K * G * ((I + K * G) \ K)
-            k = gpfaObj.K;
-            G = gpfaObj.Gamma;
-            I = speye(size(G));
-            blocks = gpfaObj.T * ones(1, gpfaObj.L);
-            gpfaObj.Cov = k - k * G * blockmldivide((I + k * G), blocks, k);
-            try
-                A = chol(gpfaObj.Cov);
-            catch
-                keyboard
+            for l=1:gpfaObj.L
+                k = gpfaObj.K{l};
+                G = gpfaObj.Gamma{l, l};
+                I = speye(size(G));
+                gpfaObj.Cov{l} = k - k * G * ((I + k * G) \ k);
             end
-            % gpfaObj.Cov = k - k * G * ((I + k * G) \ k);
         end
         
         function gpfaObj = updateKernelF(gpfaObj)
@@ -469,6 +460,21 @@ classdef GPFA
             if ~exist('blockinv', 'file')
                 addpath(fullfile('util', 'block-matrix-inverse-tools'));
                 addpath(fullfile('util', 'logdet'));
+            end
+        end
+        
+        function ss = fixImpossiblePairwiseDists(ss)
+            % Correct for impossible distances that fail to satisfy the triangle inequality
+            if any(isinf(ss(:)))
+                idxImpossible = find(triu(isinf(ss)));
+                for idx=idxImpossible'
+                    [iStim, jStim] = ind2sub(size(ss), idx);
+                    dist_i_x = ss(iStim, :);
+                    dist_j_x = ss(jStim, :);
+                    max_possible_dist = min(dist_i_x + dist_j_x);
+                    ss(iStim, jStim) = max_possible_dist;
+                    ss(jStim, iStim) = max_possible_dist;
+                end
             end
         end
     end

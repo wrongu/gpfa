@@ -59,16 +59,17 @@ else
     nStimPad = size(allStims, 1) - size(gpfaObj.uSf, 1);
     
     % Compute a new 'ss2', filling in the bottom, right, and corner for 'new' stimulus pairs
-    ss2 = blkdiag(gpfaObj.ss2, zeros(nStimPad, nStimPad));
-    for iF=1:size(ss2,1)
-        for jF=size(gpfaObj.uSf,1)+1:size(ss2, 1)
-            ss2(iF, jF) = gpfaObj.stim_dist_fun(allStims(iF, :), allStims(jF, :))^2;
-            ss2(jF, iF) = ss2(iF, jF);
+    ss = blkdiag(sqrt(gpfaObj.ss2), zeros(nStimPad, nStimPad));
+    for iF=1:size(ss,1)
+        for jF=size(gpfaObj.uSf,1)+1:size(ss, 1)
+            ss(iF, jF) = gpfaObj.stim_dist_fun(allStims(iF, :), allStims(jF, :));
+            ss(jF, iF) = ss(iF, jF);
         end
     end
+    ss = GPFA.fixImpossiblePairwiseDists(ss);
     
     % Keep this in sync with GPFA.updateKernelF
-    Kf = exp(-ss2 / gpfaObj.tauf^2) + (1e-6)*eye(size(ss2));
+    Kf = exp(-ss.^2 / gpfaObj.tauf^2) + (1e-6)*eye(size(ss));
     
     % Compute sigma_f using 'padded' Gammas
     for n=N:-1:1

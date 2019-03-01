@@ -199,34 +199,22 @@ classdef GPFA
                     gpfaObj.stim_dist_fun = @(s1, s2) sqrt(sum((s1-s2).^2));
                 end
                 
+                ss = zeros(dim_f, dim_f);
                 gpfaObj.Ns = zeros(dim_f, 1);
                 for iStim=1:dim_f
                     matches = all(gpfaObj.Sf == gpfaObj.uSf(iStim, :), 2);
                     gpfaObj.Ns(iStim) = sum(matches);
                     
                     for jStim=1:dim_f
-                        gpfaObj.ss2(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :))^2;
+                        ss(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :));
                     end
                 end
-                
-                [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
                 
                 assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
+
+                gpfaObj.ss2 = GPFA.fixImpossiblePairwiseDists(ss).^2;
                 
-                % Correct for impossible distances that fail to satisfy the triangle inequality
-                if any(isinf(gpfaObj.ss2(:)))
-                    ss = sqrt(gpfaObj.ss2);
-                    idxImpossible = find(triu(isinf(ss)));
-                    for idx=idxImpossible'
-                        [iStim, jStim] = ind2sub(size(ss), idx);
-                        dist_i_x = ss(iStim, :);
-                        dist_j_x = ss(jStim, :);
-                        max_possible_dist = min(dist_i_x + dist_j_x);
-                        ss(iStim, jStim) = max_possible_dist;
-                        ss(jStim, iStim) = max_possible_dist;
-                    end
-                    gpfaObj.ss2 = ss.^2;
-                end
+                [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
                 
                 if isempty(gpfaObj.signs), gpfaObj.signs = ones(1, gpfaObj.N); end
                 if isempty(gpfaObj.tauf), gpfaObj.tauf = 1; end
@@ -460,6 +448,21 @@ classdef GPFA
             if ~exist('blockinv', 'file')
                 addpath(fullfile('util', 'block-matrix-inverse-tools'));
                 addpath(fullfile('util', 'logdet'));
+            end
+        end
+        
+        function ss = fixImpossiblePairwiseDists(ss)
+            % Correct for impossible distances that fail to satisfy the triangle inequality
+            if any(isinf(ss(:)))
+                idxImpossible = find(triu(isinf(ss)));
+                for idx=idxImpossible'
+                    [iStim, jStim] = ind2sub(size(ss), idx);
+                    dist_i_x = ss(iStim, :);
+                    dist_j_x = ss(jStim, :);
+                    max_possible_dist = min(dist_i_x + dist_j_x);
+                    ss(iStim, jStim) = max_possible_dist;
+                    ss(jStim, iStim) = max_possible_dist;
+                end
             end
         end
     end

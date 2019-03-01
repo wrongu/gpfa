@@ -29,6 +29,7 @@ classdef GPFA
         signs % [1 x N] variance of stimulus dependence per neuron (essentially quantifies net stimulus modulation)
         tauf  % scalar length scale parameter for GP tuning
         %% --- EM settings ---
+        kernel_update_freq % how often (number of iterations) to update the kernel parameters
         fixed % cell array of fixed parameter names
         lr    % learning rate for gradient-based updates
         lr_decay  % half-life of learning rate for simulated annealing
@@ -236,6 +237,7 @@ classdef GPFA
             if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
             if isempty(gpfaObj.lr), gpfaObj.lr = 0.001; end
             if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 100; end
+            if isempty(gpfaObj.kernel_update_freq), gpfaObj.kernel_update_freq = 1; end
             
             gpfaInit = gpfaObj.initialize();
             

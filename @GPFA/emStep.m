@@ -83,7 +83,7 @@ end
 update_tau = ~any(strcmp('taus', gpfaObj.fixed));
 update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
 
-if update_tau || update_rho
+if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 0
     [QK, ~, ~] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
     Q = Q + QK;
     lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
@@ -137,7 +137,7 @@ if ~isempty(gpfaObj.Sf)
     H = H + Hf;
 end
 
-if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed))
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 0
     warning('Learning of ''signs'' not stable yet. Skipping.');
     % dimf = length(gpfaObj.Ns);
     % for n=1:gpfaObj.N
@@ -156,7 +156,7 @@ end
         gradNegQf = -tmpObj.stimScaleDeriv(mu_f, sigma_f);
     end
 
-if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed))
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 0
     % In practice, gradient steps with learning rate 'lr' was found to be unstable for all parameter
     % regimes tested. fminunc is a bit slower but has better guarantees.
     opts = optimoptions('fminunc', 'Algorithm', 'trust-region', 'SpecifyObjectiveGradient', true, ...

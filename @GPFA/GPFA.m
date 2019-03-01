@@ -35,17 +35,13 @@ classdef GPFA
     end
     
     properties% (Access = protected)
-        %% --- Metadata ---
-        isKernelToeplitz   % whether K matrix has toeplitz structure (requires equal-spaced time points)
-        % preTransform     % preprocessing applied to data (e.g. @sqrt to square-root transform spike counts)
-        % postTransform    % the inverse of preTransform
         %% --- Precomputed matrices ---
         K     % [TL x TL] (sparse matrix) kernel-based covariance for (flattened) latents
         Gamma % [TL x TL] (sparse matrix) Kronecker of (C'*inv(R)*C) and eye(T), adjusted for missing data.
         Cov   % Posterior covariance matrix, inv(inv(K) + Gamma), computed stably for the case when inv(K) is poorly conditioned
         %% --- Useful things for stimulus GP tuning ---
         uSf    % Unique values of Sf, per row
-        Sf_ord % Ordinal values for GP stimuli Sf, usable as indices into Ns and Kf
+        Sf_ord % Ordinal values for GP stimuli Sf, usable as indices into Ns and Kf. Hence Sf=uSf(Sf_ord,:)
         Ns     % Ns(i) contains the number of trials where stimulus i appeared, corresponding to unique values of Sf_ord
         Kf     % Precomputed GP Kernel for stimulus tuning
         ss2    % Squared pairwise distance function between stimuli
@@ -96,7 +92,7 @@ classdef GPFA
         function gpfaObj = setFields(gpfaObj, varargin)
             %% Ensure no protected fields are being written
             % TODO - is there an introspective programmatic way to get these?
-            protectedFields = {'isKernelToeplitz', 'K', 'Gamma', 'Cov', 'Ns', 'ss2', 'Kf', 'Sf_ord', 'uSf'};
+            protectedFields = {'K', 'Gamma', 'Cov', 'uSf', 'Sf_ord', 'Ns', 'Kf', 'ss2'};
             
             %% Copy fields from varargin
             allProps = properties(gpfaObj);
@@ -157,10 +153,8 @@ classdef GPFA
             
             if isempty(gpfaObj.dt)
                 effectiveDt = mean(diff(gpfaObj.times));
-                gpfaObj.isKernelToeplitz = all(diff(gpfaObj.times) == effectiveDt);
             else
                 effectiveDt = gpfaObj.dt;
-                gpfaObj.isKernelToeplitz = true;
                 gpfaObj.times = (1:gpfaObj.T) * gpfaObj.dt;
             end
             
@@ -192,26 +186,6 @@ classdef GPFA
                 % Note: small nonzero rho helps numerical stability
                 gpfaObj.rhos = gpfaObj.rho_scale;
             end
-                        
-            %% Check for and apply preprocessing transformations
-            
-            % if ~isempty(gpfaObj.preTransform)
-            %     % Transform Y data
-            %     gpfaObj.Y = gpfaObj.preTransform(gpfaObj.Y);
-            % 
-            %     % If not given, try to automatically infer what 'postTransform' should be.
-            %     if isempty(gpfaObj.postTransform)
-            %         if isequal(gpfaObj.preTransform, @sqrt)
-            %             gpfaObj.postTransform = @(x) x.^2;
-            %         elseif isequal(gpfaObj.preTransform, @log)
-            %             gpfaObj.postTransform = @exp;
-            %         else
-            %             error('Not sure how to invert ''%s''. Supply your own ''postTransform''', func2str(gpfaObj.preTransform));
-            %         end
-            %     end
-            % elseif ~isempty(gpfaObj.postTransform)
-            %     error('''postTransform'' is given without any ''preTransform''');
-            % end
             
             %% Precompute things for stimulus tuning
             

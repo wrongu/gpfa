@@ -211,7 +211,7 @@ classdef GPFA
                 end
                 
                 assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
-
+                
                 gpfaObj.ss2 = GPFA.fixImpossiblePairwiseDists(ss).^2;
                 
                 [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
@@ -309,26 +309,38 @@ classdef GPFA
         end
         
         %% Derivative and Q function value w.r.t. GP scales
-        function [Q, dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, mu_x, cov_x)
+        function Q = timescaleQ(gpfaObj, mu_x, cov_x)
             Q = 0;
+            for l=1:gpfaObj.L
+                tau = gpfaObj.taus(l);
+                rho = gpfaObj.rhos(l);
+                alph = gpfaObj.taus_alpha(l);
+                beta = gpfaObj.taus_beta(l);
+                % Get prior covariance matrix
+                Kl = gpfaObj.K{l};
+                Kli = inv(Kl);
+                % Compute prior values
+                log_prior_rho = -rho / gpfaObj.rho_scale(l);
+                log_prior_tau = alph*log(beta) + alph*log(tau) - beta*tau - gammaln(alph) + log(1/2);
+                % Compute Q for latent l
+                Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x{l}, Kli) + logdet(2*pi*Kl)) ...
+                    + log_prior_rho + log_prior_tau; %#ok<MINV>
+            end
+        end
+        
+        function [dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, mu_x, cov_x)
             dQ_dlogtau2 = zeros(size(gpfaObj.taus));
             dQ_dlogrho2 = zeros(size(gpfaObj.taus));
             dt2 = (gpfaObj.times - gpfaObj.times').^2;
             for l=1:gpfaObj.L
                 tau = gpfaObj.taus(l);
                 rho = gpfaObj.rhos(l);
+                alph = gpfaObj.taus_alpha(l);
+                beta = gpfaObj.taus_beta(l);
                 % Get K and E[xx'] matrices
                 Kl = gpfaObj.K{l};
                 Kli = inv(Kl);
                 e_xx_l = mu_x(:,l) .* mu_x(:,l)' + cov_x{l};
-                % Compute prior values
-                log_prior_rho = -rho / gpfaObj.rho_scale(l);
-                alph = gpfaObj.taus_alpha(l);
-                beta = gpfaObj.taus_beta(l);
-                log_prior_tau = alph*log(beta) + alph*log(tau) - beta*tau - gammaln(alph) + log(1/2);
-                % Compute Q for latent l
-                Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x{l}, Kli) + logdet(2*pi*Kl)) ...
-                    + log_prior_rho + log_prior_tau; %#ok<MINV>
                 % Compute derivatives
                 dQ_dKl = Kli * e_xx_l * Kli - Kli; %#ok<MINV>
                 dt2_div_tau2 = dt2./(2*tau^2);

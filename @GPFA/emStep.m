@@ -40,6 +40,9 @@ trace_gamma_sigma = sum(arrayfun(@(l) Gamma{l,l}(:)'*sigma_x{l}(:), 1:L));
 Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)) - 2 * sum(sum(y_resid_Ri .* (mu_x * C'))) ...
     + vec(mu_x)' * cell2mat(Gamma) * vec(mu_x) + trace_gamma_sigma);
 
+% Add kernel component to Q
+Q = Q + gpfaObj.timescaleQ(mu_x, sigma_x);
+
 H = sum(arrayfun(@(l) 1/2*logdet(2*pi*exp(1)*sigma_x{l}), 1:L));
 
 %% M-Step
@@ -84,8 +87,6 @@ update_tau = ~any(strcmp('taus', gpfaObj.fixed));
 update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
 
 if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 0
-    [QK, ~, ~] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
-    Q = Q + QK;
     lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
 
     logtau2s = 2*log(gpfaObj.taus);
@@ -94,7 +95,7 @@ if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 0
     % Perform some number of gradient steps on timescales
     for step=1:25
         % Get gradient
-        [~, dQ_dlogtau2, dQ_dlogrho2] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
+        [dQ_dlogtau2, dQ_dlogrho2] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
         
         % Step tau
         if ~any(strcmp('taus', gpfaObj.fixed))

@@ -98,7 +98,8 @@ title('Inferred X at times vs at interpolated times');
 
 iters = 500;
 % init = gpfa.setFields('fixed', {'taus'});
-init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S, 'taus_alpha', 2*os, 'taus_beta', .1*os);
+init = GPFA('Y', simData, 'L', L, 'taus', taus, 'rhos', rhos, 'sigs', sigs, 'S', S, 'taus_alpha', 2*os, ...
+    'taus_beta', .1*os, 'kernel_update_freq', 10);
 [bestFit, Qs] = init.fitEM(iters, 1e-6);
 
 figure;

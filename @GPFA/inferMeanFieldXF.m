@@ -8,15 +8,19 @@ if ~exist('iters', 'var') || isempty(iters), iters=5; end
 
 L = gpfaObj.L;
 N = gpfaObj.N;
+RiC = gpfaObj.C ./ gpfaObj.R;
 
 % Handle 'query' time indices
 if length(queryTimes) == length(gpfaObj.times) && all(queryTimes == gpfaObj.times)
     % Assuming updateCov() was called recently, nothing else to be done
     sigma_x = gpfaObj.Cov;
+    Gamma = gpfaObj.Gamma;
     queryTimeIdx = 1:gpfaObj.T;
-    nTimePad = 0;
     newT = gpfaObj.T;
+    nTimePad = 0;
 else
+    % 'allTimes' is the set of original time points followed by disjoint queried times. It is
+    % deliberately not in order.
     allTimes = [gpfaObj.times setdiff(queryTimes, gpfaObj.times)];
     newT = length(allTimes);
     [~, queryTimeIdx] = ismember(queryTimes, allTimes);
@@ -24,13 +28,15 @@ else
     gpfaObj.dt = [];
     gpfaObj.times = allTimes;
     gpfaObj = gpfaObj.updateK();
+    Gamma = cellfun(@(G) spblkdiag(G, sparse(nTimePad, nTimePad)), gpfaObj.Gamma, 'UniformOutput', false);
     % The following is a copy of gpfaObj.updateCov
-    K = gpfaObj.K;
-    GammaCells = mat2cell(gpfaObj.Gamma, gpfaObj.T*ones(1, L), gpfaObj.T*ones(1, L));
-    G = cell2mat(cellfun(@(Gam) spblkdiag(Gam, sparse(nTimePad, nTimePad)), GammaCells, 'UniformOutput', false));
-    I = speye(size(G));
-    blocks = newT * ones(1, L);
-    sigma_x = K - K * G * blockmldivide((I + K * G), blocks, K);
+    % The following is a copy of gpfaObj.updateCov
+    for l=L:-1:1
+        K = gpfaObj.K{l};
+        G = Gamma{l,l};
+        I = speye(size(G));
+        sigma_x{l} = K - K * G * ((I + K * G) \ K);
+    end
 end
 baseTimeIdx = 1:gpfaObj.T;
 
@@ -86,9 +92,24 @@ residual(isnan(residual)) = 0;
         % First, expand mu_f to be [T x N]
         mu_f_expanded = mu_f(gpfaObj.Sf_ord, :);
         
-        RiC = gpfaObj.C ./ gpfaObj.R;
-        mu_x = sigma_x * flatten(vertcat((residual - mu_f_expanded) * RiC, zeros(nTimePad, L)));
-        mu_x = reshape(mu_x, newT, L);
+        residualF = vertcat(residual - mu_f_expanded, zeros(nTimePad, gpfaObj.N));
+        
+        mu_x = zeros(newT, L);
+        if L > 1
+            % Explaining-away must be handled iteratively due to factorized posterior approximation
+            for xitr=1:10
+                for l1=1:L
+                    l_other = [1:l1-1 l1+1:L];
+                    proj_x_other = zeros(newT, 1);
+                    for l2=l_other
+                        proj_x_other = proj_x_other + Gamma{l1, l2} * mu_x(:, l2);
+                    end
+                    mu_x(:, l1) = sigma_x{l1} * (residualF * RiC(:, l1) - proj_x_other);
+                end
+            end
+        else
+            mu_x = sigma_x{1} * residualF * RiC;
+        end
     end
 
     function mu_f = updateF(mu_x)
@@ -117,15 +138,9 @@ end
 
 % Subselect to get 'queried' points
 mu_x = mu_x(queryTimeIdx, :);
-sigma_subs = queryTimeIdx(:) + newT*(0:L-1);
-sigma_x = sigma_x(sigma_subs(:), sigma_subs(:));
+sigma_x = cellfun(@(sig) sig(queryTimeIdx, queryTimeIdx), sigma_x, 'UniformOutput', false);
 
 mu_f = mu_f(queryStimIdx, :);
-for n=1:N
-    sigma_f{n} = sigma_f{n}(queryStimIdx, queryStimIdx);
-end
-end
+sigma_f = cellfun(@(sig) sig(queryStimIdx, queryStimIdx), sigma_f, 'UniformOutput', false);
 
-function v = flatten(A)
-v = A(:);
 end

@@ -26,24 +26,21 @@ if ~isempty(gpfaObj.Sf)
     stim_predict = stim_predict + mu_f(gpfaObj.Sf_ord, :);
 end
 
-% sigma_tt will contain values of sigma_x at all t1==t2
-sigma_tt = zeros(L, L, T);
-for t=1:T
-    sigma_tt(:, :, t) = sigma_x(t:T:T*L, t:T:T*L);
-end
-% Compute E[x'x] from sigma_tt
-e_xx_inner = (mu_x' * mu_x) + sum(sigma_tt, 3);
+% Get the sum of the variances (covariance diagonals) of each latent
+variances = cellfun(@(sig) sum(diag(sig)), sigma_x);
+% Compute E[x'x] under the factorized posterior (zero covariance between latents by assumption)
+e_xx_inner = (mu_x' * mu_x) + diag(variances);
 
 y_resid = Y - b' - stim_predict;
 y_resid(isnan(y_resid)) = 0;
 y_resid_Ri = y_resid ./ R';
 
 logdet_R = sum(log(2*pi*R));
-trace_gamma_sigma = sum(sum(Gamma' .* sigma_x));
+trace_gamma_sigma = sum(arrayfun(@(l) Gamma{l,l}(:)'*sigma_x{l}(:), 1:L));
 Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)) - 2 * sum(sum(y_resid_Ri .* (mu_x * C'))) ...
-    + vec(mu_x)' * Gamma * vec(mu_x) + trace_gamma_sigma);
+    + vec(mu_x)' * cell2mat(Gamma) * vec(mu_x) + trace_gamma_sigma);
 
-H = 1/2*logdet(2*pi*exp(1)*sigma_x);
+H = sum(arrayfun(@(l) 1/2*logdet(2*pi*exp(1)*sigma_x{l}), 1:L));
 
 %% M-Step
 
@@ -73,7 +70,7 @@ end
 if ~any(strcmp('R', gpfaObj.fixed))
     residual = (Y - b' - mu_x * C' - stim_predict);
     residual(isnan(residual)) = 0;
-    cov_y_x = C * sum(sigma_tt, 3) * C' / T;
+    cov_y_x = C * diag(variances) * C' / T;
     if isempty(gpfaObj.Sf)
         cov_y_f = 0;
     else

@@ -55,14 +55,13 @@ colorbar;
 
 disp('infer');
 [mu_x, sigma_x] = gpfa.inferX();
-variances = diag(sigma_x);
 
 figure;
 subplot(2,1,1);
 hold on;
 colors = lines(L);
 for l=1:L
-    stdev = sqrt(variances((l-1)*T+1:l*T));
+    stdev = sqrt(diag(sigma_x{l}));
     errorbar(mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
     plot(xTrue(:, l), 'Color', colors(l, :), 'LineWidth', 2);
 end
@@ -113,15 +112,14 @@ end
 %% Re-test inference using best-fit model
 
 disp('infer');
-[mu_x, sigma_x, e_xx] = bestFit.inferX();
-variances = diag(sigma_x);
+[mu_x, sigma_x] = bestFit.inferX();
 
 figure;
 subplot(2,1,1);
 hold on;
 colors = lines(L);
 for l=1:L
-    stdev = sqrt(variances((l-1)*T+1:l*T));
+    stdev = sqrt(diag(sigma_x{l}));
     errorbar(mu_x(:, l), sqrt(stdev) / 2, 'Color', colors(l, :));
     plot(xTrue(:, l), 'Color', colors(l, :), 'LineWidth', 2);
 end

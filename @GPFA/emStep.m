@@ -19,7 +19,7 @@ end
 if isempty(gpfaObj.Sf)
     [mu_x, sigma_x] = gpfaObj.inferX();
 else
-    [mu_x, sigma_x, mu_f, sigma_f] = gpfaObj.inferMeanFieldXF();
+    [mu_x, sigma_x, mu_f, sigma_f] = gpfaObj.inferMeanFieldXF([], [], 32);
 end
 
 if ~isempty(gpfaObj.Sf)

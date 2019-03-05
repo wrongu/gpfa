@@ -12,6 +12,7 @@ converged = false;
 
 allParams = {'R', 'C', 'D', 'b', 'taus', 'rhos', 'tauf', 'signs'};
 lastParamValues = concatAllParams(gpfaObj, allParams);
+lastDeltas = zeros(1, gpfaObj.kernel_update_freq);
 
 for idx=1:numIters
     itr = startIter+idx-1;
@@ -22,7 +23,8 @@ for idx=1:numIters
     
     newParamValues = concatAllParams(newObj, allParams);
     delta = norm(lastParamValues - newParamValues);
-    if delta < convergenceTol
+    lastDeltas = [lastDeltas(2:end) delta];
+    if max(lastDeltas) < convergenceTol
         converged = true;
         break
     end
@@ -35,6 +37,22 @@ for idx=1:numIters
     
     fprintf('EM iteration %d/%d\tQ = %.2e\tdelta Q = %.2e\tdelta params = %.2e\ttime per iteration = %.2fs\n', ...
         itr, maxIters, Qs(idx)+Hs(idx), deltaQ, delta, elapsed / idx);
+
+    if deltaQ < 0
+        converged = true;
+        break
+        % DEBUGGING
+        % changedParams = setdiff(allParams, gpfaObj.fixed);
+        % for iParam=1:length(changedParams)
+        %     tmpObj = gpfaObj;
+        %     tmpObj.fixed = setdiff(allParams, changedParams{iParam});
+        %     [newTmpObj, oldQ, oldH] = tmpObj.emStep(itr);
+        %     [~, newQ, newH] = newTmpObj.emStep(itr+1);
+        %     deltaParam = norm(concatAllParams(newTmpObj, allParams) - concatAllParams(tmpObj, allParams));
+        %     fprintf('%s change by magnitude %.2e, delta LL = %.2e\n', changedParams{iParam}, deltaParam, (newQ+newH)-(oldQ+oldH));
+        % end
+        % keyboard;
+    end
     
     gpfaObj = newObj;
     lastParamValues = newParamValues;

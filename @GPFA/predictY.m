@@ -9,7 +9,12 @@ else
         [mu_x, ~, mu_f, ~] = gpfaObj.inferMeanFieldXF();
     end
 end
-mu_Y = gpfaObj.b' + mu_x * gpfaObj.C';
+
+if gpfaObj.L > 0
+    mu_Y = gpfaObj.b' + mu_x * gpfaObj.C';
+else
+    mu_Y = repmat(gpfaObj.b', gpfaObj.T, 1);
+end
 
 if ~isempty(gpfaObj.S)
     mu_Y = mu_Y + gpfaObj.S * gpfaObj.D';

@@ -38,9 +38,13 @@ y_resid(isnan(y_resid)) = 0;
 y_resid_Ri = y_resid ./ R';
 
 logdet_R = sum(log(2*pi*R));
-trace_gamma_sigma = sum(arrayfun(@(l) Gamma{l,l}(:)'*sigma_x{l}(:), 1:L));
-Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)) - 2 * sum(sum(y_resid_Ri .* (mu_x * C'))) ...
-    + vec(mu_x)' * cell2mat(Gamma) * vec(mu_x) + trace_gamma_sigma);
+if gpfaObj.L > 0
+    trace_gamma_sigma = sum(arrayfun(@(l) Gamma{l,l}(:)'*sigma_x{l}(:), 1:L));
+    Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)) - 2 * sum(sum(y_resid_Ri .* (mu_x * C'))) ...
+        + vec(mu_x)' * cell2mat(Gamma) * vec(mu_x) + trace_gamma_sigma);
+else
+    Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)));
+end
 
 % Add kernel component to Q
 Q = Q + gpfaObj.timescaleQ(mu_x, sigma_x);
@@ -52,19 +56,26 @@ H = sum(arrayfun(@(l) 1/2*logdet(2*pi*exp(1)*sigma_x{l}), 1:L));
 % Note that the 'true' M-Step would jointly optimize b, C, D, and R together. We approximate this
 % here by updating in the order b, C, D, R, since R depends on the previous 3, and all depend on b.
 
+if gpfaObj.L > 0
+    xC = mu_x * C';
+else
+    xC = 0;
+end
+
 if ~any(strcmp('b', gpfaObj.fixed))
-    residual = Y - mu_x * C' - stim_predict;
+    residual = Y - xC - stim_predict;
     b = nanmean(residual, 1)';
 end
 
-if ~any(strcmp('C', gpfaObj.fixed))
+if ~any(strcmp('C', gpfaObj.fixed)) && gpfaObj.L > 0
     residual = Y - b' - stim_predict;
     residual(isnan(residual)) = 0;
     C = (residual' * mu_x) / e_xx_inner;
+    xC = mu_x * C';
 end
 
 if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
-    residual = Y - b' - mu_x * C';
+    residual = Y - b' - xC;
     if ~isempty(gpfaObj.Sf)
         residual = residual - mu_f(gpfaObj.Sf_ord, :);
     end
@@ -73,9 +84,13 @@ if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
 end
 
 if ~any(strcmp('R', gpfaObj.fixed))
-    residual = (Y - b' - mu_x * C' - stim_predict);
+    residual = (Y - b' - xC - stim_predict);
     residual(isnan(residual)) = 0;
-    cov_y_x = C * diag(variances) * C' / T;
+    if gpfaObj.L > 0
+        cov_y_x = C * diag(variances) * C' / T;
+    else
+        cov_y_x = 0;
+    end
     if isempty(gpfaObj.Sf)
         cov_y_f = 0;
     else

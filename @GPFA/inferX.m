@@ -6,6 +6,12 @@ if ~exist('queryTimes', 'var') || isempty(queryTimes), queryTimes = gpfaObj.time
 
 L = gpfaObj.L;
 
+if L == 0
+    mu_x = [];
+    sigma_x = {};
+    return
+end
+
 if length(queryTimes) == length(gpfaObj.times) && all(queryTimes == gpfaObj.times)
     sigma_x = gpfaObj.Cov;
     Gamma = gpfaObj.Gamma;

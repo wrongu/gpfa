@@ -2,7 +2,7 @@
 
 N = 10;
 T = 200;
-L = 1;
+L = 0;
 M = 5;
 stims = linspace(0, 2*pi*99/100, 100)';
 shuffle = randi(length(stims), T, 1);

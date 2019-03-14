@@ -277,7 +277,9 @@ classdef GPFA
             
             % Initialize latent loadings C using top L principal components of data after regressing
             % out the stimulus and smoothing by kernels of each unique 'tau'
-            if ~any(strcmp('C', gpfaObj.fixed))
+            if gpfaObj.L == 0
+                gpfaObj.C = [];
+            elseif ~any(strcmp('C', gpfaObj.fixed))
                 if ~any(isnan(gpfaObj.Y(:)))
                     uTaus = unique(gpfaObj.taus);
                     for i=1:length(uTaus)
@@ -371,6 +373,11 @@ classdef GPFA
         
         %% Functions to update 'precomupted' terms when underlying parameters change
         function gpfaObj = updateK(gpfaObj)
+            if gpfaObj.L == 0
+                gpfaObj.K = {};
+                return
+            end
+            
             % Create array of timepoints for each measurement, either from 'dt' or simply use
             % 'times'
             if ~isempty(gpfaObj.dt)
@@ -392,6 +399,11 @@ classdef GPFA
         end
         
         function gpfaObj = updateGamma(gpfaObj, Y)
+            if gpfaObj.L == 0
+                gpfaObj.Gamma = {};
+                return
+            end
+            
             if ~exist('Y', 'var'), Y = gpfaObj.Y; end
             
             if ~any(isnan(Y(:)))
@@ -421,6 +433,11 @@ classdef GPFA
         end
         
         function gpfaObj = updateCov(gpfaObj)
+            if gpfaObj.L == 0
+                gpfaObj.Cov = {};
+                return
+            end
+            
             % Compute posterior cov, inv(inv(K) + Gamma) using the following identity to avoid
             % actually taking inv(K):
             %   inv(A+B) = inv(A) - inv(A)*B*inv(I+inv(A)*B)*inv(A)

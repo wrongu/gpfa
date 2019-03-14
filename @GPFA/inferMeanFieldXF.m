@@ -9,7 +9,12 @@ if ~exist('convTol', 'var') || isempty(convTol), convTol=1e-6; end
 
 L = gpfaObj.L;
 N = gpfaObj.N;
-RiC = gpfaObj.C ./ gpfaObj.R;
+
+if L > 0
+    RiC = gpfaObj.C ./ gpfaObj.R;
+else
+    RiC = 0;
+end
 
 % Handle 'query' time indices
 if length(queryTimes) == length(gpfaObj.times) && all(queryTimes == gpfaObj.times)
@@ -98,8 +103,11 @@ residual(isnan(residual)) = 0;
         
         residualF = vertcat(residual - mu_f_expanded, zeros(nTimePad, gpfaObj.N));
         
-        mu_x = zeros(newT, L);
-        if L > 1
+        if L == 0
+            mu_x = [];
+            return
+        elseif L > 1
+            mu_x = zeros(newT, L);
             % Explaining-away must be handled iteratively due to factorized posterior approximation
             for xitr=1:10
                 for l1=1:L
@@ -117,7 +125,11 @@ residual(isnan(residual)) = 0;
     end
 
     function mu_f = updateF(mu_x)
-        residual_with_x = residual - mu_x * gpfaObj.C';
+        if L > 0
+            residual_with_x = residual - mu_x * gpfaObj.C';
+        else
+            residual_with_x = residual;
+        end
         % Currently 'residual' is [T x N] but we need [S x N] version where each row is the sum of
         % all trials (T) where the stimulus had a particular value (S)
         residualS = zeros(length(gpfaObj.Ns), N);
@@ -131,6 +143,14 @@ residual(isnan(residual)) = 0;
             mu_f(:, nn) = sigma_f{nn} * residualS(:, nn);
         end
     end
+
+if L == 0
+    % Special case... it's ugly, but at least indexing an empty array with an empty array doesn't
+    % throw an error.
+    baseTimeIdx = [];
+    queryTimeIdx = [];
+    sigma_x = {};
+end
 
 % Initialize with zero latents (simply fit tuning to start), then do a series of coordinate-ascent
 % updates, ultimately converging to the factorized q(x)q(f) which best approximates p(x,f|...)

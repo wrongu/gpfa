@@ -1,10 +1,11 @@
-function [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj, queryTimes, queryStims, iters)
+function [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj, queryTimes, queryStims, maxIters, convTol)
 
 assert(~isempty(gpfaObj.Sf), 'Sf is empty - use inferX instead!');
 
 if ~exist('queryTimes', 'var') || isempty(queryTimes), queryTimes = gpfaObj.times; end
 if ~exist('queryStims', 'var') || isempty(queryStims), queryStims = gpfaObj.uSf; end
-if ~exist('iters', 'var') || isempty(iters), iters=5; end
+if ~exist('iters', 'var') || isempty(maxIters), maxIters=500; end
+if ~exist('convTol', 'var') || isempty(convTol), convTol=1e-6; end
 
 L = gpfaObj.L;
 N = gpfaObj.N;
@@ -53,6 +54,7 @@ if all(size(queryStims) == size(gpfaObj.uSf)) && all(queryStims(:) == gpfaObj.uS
         % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
         sigma_f{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
     end
+    newF = length(gpfaObj.Ns);
 else
     allStims = [gpfaObj.uSf; setdiff(queryStims, gpfaObj.uSf, 'rows')];
     [~, queryStimIdx] = ismember(queryStims, allStims, 'rows');
@@ -79,6 +81,7 @@ else
         % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
         sigma_f{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
     end
+    newF = size(allStims, 1);
 end
 baseStimIdx = 1:size(gpfaObj.uSf, 1);
 
@@ -132,9 +135,17 @@ residual(isnan(residual)) = 0;
 % Initialize with zero latents (simply fit tuning to start), then do a series of coordinate-ascent
 % updates, ultimately converging to the factorized q(x)q(f) which best approximates p(x,f|...)
 mu_x = zeros(newT, L);
-for itr=1:iters
-    mu_f = updateF(mu_x(baseTimeIdx, :));
-    mu_x = updateX(mu_f(baseStimIdx, :));
+mu_f = zeros(newF, N);
+% Iterate to convergence or max iters
+itr = 2;
+delta = inf;
+while delta(itr-1) > convTol && itr <= maxIters
+    new_mu_f = updateF(mu_x(baseTimeIdx, :));
+    new_mu_x = updateX(new_mu_f(baseStimIdx, :));
+    delta(itr) = max([abs(mu_f(:) - new_mu_f(:)); abs(mu_x(:) - new_mu_x(:))]);
+    mu_f = new_mu_f;
+    mu_x = new_mu_x;
+    itr = itr + 1;
 end
 
 % Subselect to get 'queried' points

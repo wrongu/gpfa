@@ -240,7 +240,7 @@ classdef GPFA
         
         %% Inference
         [mu_x, sigma_x] = inferX(gpfaObj, queryTimes)
-        [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj, queryTimes, queryStims, iters)
+        [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj, queryTimes, queryStims, maxIters, convTol)
         
         %% Learning
         [gpfaObj, Q, H] = emStep(gpfaObj, itr)

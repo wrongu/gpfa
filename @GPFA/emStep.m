@@ -19,7 +19,9 @@ end
 if isempty(gpfaObj.Sf)
     [mu_x, sigma_x] = gpfaObj.inferX();
 else
-    [mu_x, sigma_x, mu_f, sigma_f] = gpfaObj.inferMeanFieldXF([], [], 32);
+    % Convergence tolerance for mu_x and mu_f gets more strict as iterations go on
+    tolerance = 1e-1 * (1/2)^((itr-1) / gpfaObj.lr_decay);
+    [mu_x, sigma_x, mu_f, sigma_f] = gpfaObj.inferMeanFieldXF([], [], [], tolerance);
 end
 
 if ~isempty(gpfaObj.Sf)

@@ -97,7 +97,7 @@ if ~isempty(gpfaObj.S)
 end
 residual(isnan(residual)) = 0;
 
-    function mu_x = updateX(mu_f)
+    function mu_x = updateX(mu_f, last_mu_x)
         % First, expand mu_f to be [T x N]
         mu_f_expanded = mu_f(gpfaObj.Sf_ord, :);
         
@@ -107,7 +107,7 @@ residual(isnan(residual)) = 0;
             mu_x = [];
             return
         elseif L > 1
-            mu_x = zeros(newT, L);
+            mu_x = last_mu_x;
             % Explaining-away must be handled iteratively due to factorized posterior approximation
             for xitr=1:10
                 for l1=1:L
@@ -161,7 +161,7 @@ itr = 2;
 delta = inf;
 while delta(itr-1) > convTol && itr <= maxIters
     new_mu_f = updateF(mu_x(baseTimeIdx, :));
-    new_mu_x = updateX(new_mu_f(baseStimIdx, :));
+    new_mu_x = updateX(new_mu_f(baseStimIdx, :), mu_x);
     delta(itr) = max([abs(mu_f(:) - new_mu_f(:)); abs(mu_x(:) - new_mu_x(:))]);
     mu_f = new_mu_f;
     mu_x = new_mu_x;

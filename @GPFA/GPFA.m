@@ -250,6 +250,15 @@ classdef GPFA
         [Yhat, x, f] = simulate(gpfaObj)
         [mu_Y] = predictY(gpfaObj, mu_x, mu_f)
         [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x, mu_f, sigma_f)
+        
+        %% Save to disk while reasonably managing file sizes
+        function gpfaObj = saveobj(gpfaObj)
+            % Remove large fields that can be reconstructed inside @loadobj, which is defined below
+            % since it's required to be a static method
+            gpfaObj.K = {};
+            gpfaObj.Gamma = {};
+            gpfaObj.Cov = {};
+        end
     end
     
     methods (Access = protected)
@@ -493,6 +502,10 @@ classdef GPFA
                     ss(jStim, iStim) = max_possible_dist;
                 end
             end
+        end
+        
+        function gpfaObj = loadobj(gpfaObj)
+            gpfaObj = gpfaObj.updateAll();
         end
     end
 end

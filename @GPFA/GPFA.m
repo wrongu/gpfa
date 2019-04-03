@@ -332,7 +332,7 @@ classdef GPFA
                 Kli = inv(Kl);
                 % Compute prior values
                 log_prior_rho = -rho / gpfaObj.rho_scale(l);
-                log_prior_tau = alph*log(beta) + alph*log(tau) - beta*tau - gammaln(alph) + log(1/2);
+                log_prior_tau = alph*log(beta) + (alph-1)*log(tau) - beta*tau - gammaln(alph);
                 % Compute Q for latent l
                 Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x{l}, Kli) + logdet(2*pi*Kl)) ...
                     + log_prior_rho + log_prior_tau; %#ok<MINV>

@@ -159,6 +159,7 @@ mu_f = zeros(newF, N);
 % Iterate to convergence or max iters
 itr = 2;
 delta = inf;
+f = figure; hold on;
 while delta(itr-1) > convTol && itr <= maxIters
     new_mu_f = updateF(mu_x(baseTimeIdx, :));
     new_mu_x = updateX(new_mu_f(baseStimIdx, :), mu_x);

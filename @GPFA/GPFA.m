@@ -209,10 +209,11 @@ classdef GPFA
                         ss(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :));
                     end
                 end
-
+                
                 gpfaObj.ss2 = ss.^2;
+                
                 assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
-
+                
                 [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
                 
                 if isempty(gpfaObj.signs), gpfaObj.signs = ones(1, gpfaObj.N); end
@@ -246,7 +247,7 @@ classdef GPFA
         [bestFit, Qs, Hs, converged] = fitEM(gpfaObj, maxIters, convergenceTol, startIter)
         
         %% Simulation / Generate Data
-        [Yhat, x, f] = simulate(gpfaObj)
+        [Yhat, x, f] = simulate(gpfaObj, x, f)
         [mu_Y] = predictY(gpfaObj, mu_x, mu_f)
         [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x, mu_f, sigma_f)
         
@@ -500,9 +501,14 @@ classdef GPFA
                 corr_ij = corr_matrix(iStim, jStim);
                 corr_i_k = corr_matrix(iStim, :);
                 corr_j_k = corr_matrix(jStim, :);
+                nonzeros = corr_i_k ~= 0 & corr_j_k ~= 0;
+                corr_i_k = corr_i_k(nonzeros);
+                corr_j_k = corr_j_k(nonzeros);
                 min_feasible_corr = max(corr_i_k .* corr_j_k - sqrt((1- corr_i_k.^2).*(1- corr_j_k.^2)));
-                corr_matrix(iStim, jStim) = max(corr_ij, min_feasible_corr);
-                corr_matrix(jStim, iStim) = max(corr_ij, min_feasible_corr);
+                max_feasible_corr = min(corr_i_k .* corr_j_k + sqrt((1- corr_i_k.^2).*(1- corr_j_k.^2)));
+                % 'Clip' corr_ij to lie between min_feasible_corr and max_feasible_corr
+                corr_matrix(iStim, jStim) = min(max_feasible_corr, max(corr_ij, min_feasible_corr));
+                corr_matrix(jStim, iStim) = corr_matrix(iStim, jStim);
             end
             cov_matrix = corr_matrix .* (stdevs .* stdevs');
         end

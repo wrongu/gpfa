@@ -209,11 +209,10 @@ classdef GPFA
                         ss(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :));
                     end
                 end
-                
+
+                gpfaObj.ss2 = ss.^2;
                 assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
-                
-                gpfaObj.ss2 = GPFA.fixImpossiblePairwiseDists(ss).^2;
-                
+
                 [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
                 
                 if isempty(gpfaObj.signs), gpfaObj.signs = ones(1, gpfaObj.N); end
@@ -463,7 +462,8 @@ classdef GPFA
         function gpfaObj = updateKernelF(gpfaObj)
             % Note: Kf is only [S x S]. The prior covariance per neuron is Kf*signs(n)^2.
             % Adding a small diagonal component for stability
-            gpfaObj.Kf = exp(-gpfaObj.ss2 / gpfaObj.tauf^2) + (1e-6)*eye(size(gpfaObj.ss2));
+            gpfaObj.Kf = exp(-gpfaObj.ss2 / gpfaObj.tauf^2);
+            gpfaObj.Kf = GPFA.fixImpossiblePairwiseCorrs(gpfaObj.Kf) + (1e-6)*eye(size(gpfaObj.ss2));
         end
         
         function gpfaObj = updateAll(gpfaObj, Y)
@@ -489,19 +489,22 @@ classdef GPFA
             end
         end
         
-        function ss = fixImpossiblePairwiseDists(ss)
-            % Correct for impossible distances that fail to satisfy the triangle inequality
-            if any(isinf(ss(:)))
-                idxImpossible = find(triu(isinf(ss)));
-                for idx=idxImpossible'
-                    [iStim, jStim] = ind2sub(size(ss), idx);
-                    dist_i_x = ss(iStim, :);
-                    dist_j_x = ss(jStim, :);
-                    max_possible_dist = min(dist_i_x + dist_j_x);
-                    ss(iStim, jStim) = max_possible_dist;
-                    ss(jStim, iStim) = max_possible_dist;
-                end
+        function cov_matrix = fixImpossiblePairwiseCorrs(cov_matrix)
+            % Correct for impossible correlations that fail to satisfy inequalities of
+            % triplets of variables
+            stdevs = sqrt(diag(cov_matrix));
+            corr_matrix = cov_matrix ./ (stdevs .* stdevs');
+            idxToCheck = find(triu(cov_matrix == 0));
+            for idx=idxToCheck'
+                [iStim, jStim] = ind2sub(size(corr_matrix), idx);
+                corr_ij = corr_matrix(iStim, jStim);
+                corr_i_k = corr_matrix(iStim, :);
+                corr_j_k = corr_matrix(jStim, :);
+                min_feasible_corr = max(corr_i_k .* corr_j_k - sqrt((1- corr_i_k.^2).*(1- corr_j_k.^2)));
+                corr_matrix(iStim, jStim) = max(corr_ij, min_feasible_corr);
+                corr_matrix(jStim, iStim) = max(corr_ij, min_feasible_corr);
             end
+            cov_matrix = corr_matrix .* (stdevs .* stdevs');
         end
         
         function gpfaObj = loadobj(gpfaObj)

@@ -73,10 +73,10 @@ else
             ss(jF, iF) = ss(iF, jF);
         end
     end
-    ss = GPFA.fixImpossiblePairwiseDists(ss);
     
     % Keep this in sync with GPFA.updateKernelF
-    Kf = exp(-ss.^2 / gpfaObj.tauf^2) + (1e-6)*eye(size(ss));
+    Kf = exp(-ss.^2 / gpfaObj.tauf^2);
+    Kf = GPFA.fixImpossiblePairwiseCorrs(Kf) + (1e-6)*eye(size(ss));
     
     % Compute sigma_f using 'padded' Gammas
     for n=N:-1:1

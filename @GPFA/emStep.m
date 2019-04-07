@@ -75,12 +75,14 @@ if ~any(strcmp('C', gpfaObj.fixed)) && gpfaObj.L > 0
 end
 
 if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
+    stim_predict = stim_predict - gpfaObj.S * D';
     residual = Y - b' - xC;
     if ~isempty(gpfaObj.Sf)
         residual = residual - mu_f(gpfaObj.Sf_ord, :);
     end
     residual(isnan(residual)) = 0;
     D = residual' * gpfaObj.S / (gpfaObj.S' * gpfaObj.S);
+    stim_predict = stim_predict + gpfaObj.S * D';
 end
 
 if ~any(strcmp('R', gpfaObj.fixed))

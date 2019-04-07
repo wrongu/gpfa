@@ -464,7 +464,7 @@ classdef GPFA
             % Note: Kf is only [S x S]. The prior covariance per neuron is Kf*signs(n)^2.
             % Adding a small diagonal component for stability
             gpfaObj.Kf = exp(-gpfaObj.ss2 / gpfaObj.tauf^2);
-            gpfaObj.Kf = GPFA.fixImpossiblePairwiseCorrs(gpfaObj.Kf) + (1e-6)*eye(size(gpfaObj.ss2));
+            gpfaObj.Kf = GPFA.fixImpossiblePairwiseCorrelations(gpfaObj.Kf, 2) + (1e-6)*eye(size(gpfaObj.ss2));
         end
         
         function gpfaObj = updateAll(gpfaObj, Y)
@@ -490,27 +490,31 @@ classdef GPFA
             end
         end
         
-        function cov_matrix = fixImpossiblePairwiseCorrs(cov_matrix)
-            % Correct for impossible correlations that fail to satisfy inequalities of
-            % triplets of variables
-            stdevs = sqrt(diag(cov_matrix));
-            corr_matrix = cov_matrix ./ (stdevs .* stdevs');
-            idxToCheck = find(triu(cov_matrix == 0));
-            for idx=idxToCheck'
-                [iStim, jStim] = ind2sub(size(corr_matrix), idx);
-                corr_ij = corr_matrix(iStim, jStim);
-                corr_i_k = corr_matrix(iStim, :);
-                corr_j_k = corr_matrix(jStim, :);
-                nonzeros = corr_i_k ~= 0 & corr_j_k ~= 0;
-                corr_i_k = corr_i_k(nonzeros);
-                corr_j_k = corr_j_k(nonzeros);
-                min_feasible_corr = max(corr_i_k .* corr_j_k - sqrt((1- corr_i_k.^2).*(1- corr_j_k.^2)));
-                max_feasible_corr = min(corr_i_k .* corr_j_k + sqrt((1- corr_i_k.^2).*(1- corr_j_k.^2)));
-                % 'Clip' corr_ij to lie between min_feasible_corr and max_feasible_corr
-                corr_matrix(iStim, jStim) = min(max_feasible_corr, max(corr_ij, min_feasible_corr));
-                corr_matrix(jStim, iStim) = corr_matrix(iStim, jStim);
+        function Cov = fixImpossiblePairwiseCorrelations(Cov, recurse)
+            % Correct for impossible 3-variable correlations where the 'distance' function returned
+            % infinity (if X and Y have correlation C_xy, and Y and Z have C_yz, then there
+            % is a minimum correlation between X and Z for the rest of the math to be sane).
+            % Equation from https://math.stackexchange.com/a/586142
+            stdev = sqrt(diag(Cov));
+            Corr = Cov ./ (stdev .* stdev');
+            Corr2 = Corr;
+            idxImpossible = find(triu(Cov == 0));
+            for idx=idxImpossible'
+                [iStim, jStim] = ind2sub(size(Cov), idx);
+                c_xy = Corr(iStim, :);
+                c_yz = Corr(jStim, :);
+                min_corr_xz = c_xy.*c_yz - sqrt((1-c_xy).*(1-c_yz));
+                % corr_xz must be at least as big as the largest minimum 3-way constraint
+                corr_xz = max(min_corr_xz);
+                Corr2(iStim, jStim) = corr_xz;
+                Corr2(jStim, iStim) = corr_xz;
             end
-            cov_matrix = corr_matrix .* (stdevs .* stdevs');
+            % Convert from Corr back to Cov
+            Cov = Corr2 .* stdev .* stdev';
+            
+            if nargin >= 2 && recurse >= 1
+                Cov = GPFA.fixImpossiblePairwiseCorrelations(Cov, recurse-1);
+            end
         end
         
         function gpfaObj = loadobj(gpfaObj)

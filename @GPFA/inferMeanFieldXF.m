@@ -75,8 +75,7 @@ else
     end
     
     % Keep this in sync with GPFA.updateKernelF
-    Kf = exp(-ss.^2 / gpfaObj.tauf^2);
-    Kf = GPFA.fixImpossiblePairwiseCorrs(Kf) + (1e-6)*eye(size(ss));
+    Kf = GPFA.fixImpossiblePairwiseCorrelations(exp(-ss.^2 / gpfaObj.tauf^2), 2) + (1e-6)*eye(size(ss));
     
     % Compute sigma_f using 'padded' Gammas
     for n=N:-1:1
@@ -159,7 +158,6 @@ mu_f = zeros(newF, N);
 % Iterate to convergence or max iters
 itr = 2;
 delta = inf;
-f = figure; hold on;
 while delta(itr-1) > convTol && itr <= maxIters
     new_mu_f = updateF(mu_x(baseTimeIdx, :));
     new_mu_x = updateX(new_mu_f(baseStimIdx, :), mu_x);

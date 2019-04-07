@@ -454,7 +454,7 @@ classdef GPFA
         function gpfaObj = updateKernelF(gpfaObj)
             % Note: Kf is only [S x S]. The prior covariance per neuron is Kf*signs(n)^2.
             % Adding a small diagonal component for stability
-            gpfaObj.Kf = GPFA.fixImpossiblePairwiseCorrelations(exp(-gpfaObj.ss2 / gpfaObj.tauf^2)) + (1e-6)*eye(size(gpfaObj.ss2));
+            gpfaObj.Kf = GPFA.fixImpossiblePairwiseCorrelations(exp(-gpfaObj.ss2 / gpfaObj.tauf^2), 2) + (1e-6)*eye(size(gpfaObj.ss2));
         end
         
         function gpfaObj = updateAll(gpfaObj, Y)
@@ -480,13 +480,14 @@ classdef GPFA
             end
         end
         
-        function Cov = fixImpossiblePairwiseCorrelations(Cov)
+        function Cov = fixImpossiblePairwiseCorrelations(Cov, recurse)
             % Correct for impossible 3-variable correlations where the 'distance' function returned
             % infinity (if X and Y have correlation C_xy, and Y and Z have C_yz, then there
             % is a minimum correlation between X and Z for the rest of the math to be sane).
             % Equation from https://math.stackexchange.com/a/586142
             stdev = sqrt(diag(Cov));
             Corr = Cov ./ (stdev .* stdev');
+            Corr2 = Corr;
             idxImpossible = find(triu(Cov == 0));
             for idx=idxImpossible'
                 [iStim, jStim] = ind2sub(size(Cov), idx);
@@ -495,11 +496,15 @@ classdef GPFA
                 min_corr_xz = c_xy.*c_yz - sqrt((1-c_xy).*(1-c_yz));
                 % corr_xz must be at least as big as the largest minimum 3-way constraint
                 corr_xz = max(min_corr_xz);
-                Corr(iStim, jStim) = corr_xz;
-                Corr(jStim, iStim) = corr_xz;
+                Corr2(iStim, jStim) = corr_xz;
+                Corr2(jStim, iStim) = corr_xz;
             end
             % Convert from Corr back to Cov
-            Cov = Corr .* stdev .* stdev';
+            Cov = Corr2 .* stdev .* stdev';
+            
+            if nargin >= 2 && recurse >= 1
+                Cov = GPFA.fixImpossiblePairwiseCorrelations(Cov, recurse-1);
+            end
         end
     end
 end

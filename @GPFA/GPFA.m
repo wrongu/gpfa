@@ -210,9 +210,9 @@ classdef GPFA
                     end
                 end
                 
-                assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
+                gpfaObj.ss2 = ss.^2;
                 
-                gpfaObj.ss2 = GPFA.fixImpossiblePairwiseDists(ss).^2;
+                assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
                 
                 [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
                 
@@ -247,7 +247,7 @@ classdef GPFA
         [bestFit, Qs, Hs, converged] = fitEM(gpfaObj, maxIters, convergenceTol, startIter)
         
         %% Simulation / Generate Data
-        [Yhat, x, f] = simulate(gpfaObj)
+        [Yhat, x, f] = simulate(gpfaObj, x, f)
         [mu_Y] = predictY(gpfaObj, mu_x, mu_f)
         [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x, mu_f, sigma_f)
         
@@ -463,7 +463,8 @@ classdef GPFA
         function gpfaObj = updateKernelF(gpfaObj)
             % Note: Kf is only [S x S]. The prior covariance per neuron is Kf*signs(n)^2.
             % Adding a small diagonal component for stability
-            gpfaObj.Kf = exp(-gpfaObj.ss2 / gpfaObj.tauf^2) + (1e-6)*eye(size(gpfaObj.ss2));
+            gpfaObj.Kf = exp(-gpfaObj.ss2 / gpfaObj.tauf^2);
+            gpfaObj.Kf = GPFA.fixImpossiblePairwiseCorrelations(gpfaObj.Kf, 2) + (1e-6)*eye(size(gpfaObj.ss2));
         end
         
         function gpfaObj = updateAll(gpfaObj, Y)
@@ -489,18 +490,30 @@ classdef GPFA
             end
         end
         
-        function ss = fixImpossiblePairwiseDists(ss)
-            % Correct for impossible distances that fail to satisfy the triangle inequality
-            if any(isinf(ss(:)))
-                idxImpossible = find(triu(isinf(ss)));
-                for idx=idxImpossible'
-                    [iStim, jStim] = ind2sub(size(ss), idx);
-                    dist_i_x = ss(iStim, :);
-                    dist_j_x = ss(jStim, :);
-                    max_possible_dist = min(dist_i_x + dist_j_x);
-                    ss(iStim, jStim) = max_possible_dist;
-                    ss(jStim, iStim) = max_possible_dist;
-                end
+        function Cov = fixImpossiblePairwiseCorrelations(Cov, recurse)
+            % Correct for impossible 3-variable correlations where the 'distance' function returned
+            % infinity (if X and Y have correlation C_xy, and Y and Z have C_yz, then there
+            % is a minimum correlation between X and Z for the rest of the math to be sane).
+            % Equation from https://math.stackexchange.com/a/586142
+            stdev = sqrt(diag(Cov));
+            Corr = Cov ./ (stdev .* stdev');
+            Corr2 = Corr;
+            idxImpossible = find(triu(Cov == 0));
+            for idx=idxImpossible'
+                [iStim, jStim] = ind2sub(size(Cov), idx);
+                c_xy = Corr(iStim, :);
+                c_yz = Corr(jStim, :);
+                min_corr_xz = c_xy.*c_yz - sqrt((1-c_xy).*(1-c_yz));
+                % corr_xz must be at least as big as the largest minimum 3-way constraint
+                corr_xz = max(min_corr_xz);
+                Corr2(iStim, jStim) = corr_xz;
+                Corr2(jStim, iStim) = corr_xz;
+            end
+            % Convert from Corr back to Cov
+            Cov = Corr2 .* stdev .* stdev';
+            
+            if nargin >= 2 && recurse >= 1
+                Cov = GPFA.fixImpossiblePairwiseCorrelations(Cov, recurse-1);
             end
         end
         

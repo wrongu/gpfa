@@ -1,9 +1,11 @@
-function [Yhat, x, f] = simulate(gpfaObj)
+function [Yhat, x, f] = simulate(gpfaObj, x, f)
 %GPFA.SIMULATE generate data sampled from the prior. Result is [T x N] matrix of Y data.
 
 if gpfaObj.L > 0
     % Draw values of x from the prior
-    x = zeros(gpfaObj.T, gpfaObj.L);
+    if ~exist('x', 'var') || isempty(x)
+        x = zeros(gpfaObj.T, gpfaObj.L);
+    end
     mu_x_l = zeros(gpfaObj.T, 1);
     for l=1:gpfaObj.L
         x(:, l) = mvnrnd(mu_x_l, gpfaObj.K{l});
@@ -21,8 +23,10 @@ end
 
 if ~isempty(gpfaObj.Sf)
     % Draw values of f from the prior
-    dimf = size(gpfaObj.Kf, 1);
-    f = gpfaObj.signs .* real(sqrtm(gpfaObj.Kf) * randn(dimf, gpfaObj.N));
+    if ~exist('f', 'var') || isempty(f)
+        dimf = size(gpfaObj.Kf, 1);
+        f = gpfaObj.signs .* real(sqrtm(gpfaObj.Kf) * randn(dimf, gpfaObj.N));
+    end
     mu_Y = mu_Y + f(gpfaObj.Sf_ord, :);
 else
     f = [];

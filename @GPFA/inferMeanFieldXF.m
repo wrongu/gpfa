@@ -47,47 +47,49 @@ end
 baseTimeIdx = 1:gpfaObj.T;
 
 % Handle 'query' tuning curve indices
-if all(size(queryStims) == size(gpfaObj.uSf)) && all(queryStims(:) == gpfaObj.uSf(:))
-    queryStimIdx = 1:size(gpfaObj.uSf, 1);
-    nStimPad = 0;
-    
-    % Compute sigma_f using standard method
-    for n=N:-1:1
-        K = gpfaObj.signs(n)^2 * gpfaObj.Kf;
-        G = spdiag(gpfaObj.Ns) / gpfaObj.R(n);
+for k=gpfaObj.nGP:-1:1
+    if all(size(queryStims{k}) == size(gpfaObj.uSf{k})) && all(queryStims{k}(:) == gpfaObj.uSf{k}(:))
+        queryStimIdx{k} = 1:size(gpfaObj.uSf{k}, 1);
+        nStimPad(k) = 0;
         
-        % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
-        sigma_f{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
-    end
-    newF = length(gpfaObj.Ns);
-else
-    allStims = [gpfaObj.uSf; setdiff(queryStims, gpfaObj.uSf, 'rows')];
-    [~, queryStimIdx] = ismember(queryStims, allStims, 'rows');
-    nStimPad = size(allStims, 1) - size(gpfaObj.uSf, 1);
-    
-    % Compute a new 'ss2', filling in the bottom, right, and corner for 'new' stimulus pairs
-    ss = blkdiag(sqrt(gpfaObj.ss2), zeros(nStimPad, nStimPad));
-    for iF=1:size(ss,1)
-        for jF=size(gpfaObj.uSf,1)+1:size(ss, 1)
-            ss(iF, jF) = gpfaObj.stim_dist_fun(allStims(iF, :), allStims(jF, :));
-            ss(jF, iF) = ss(iF, jF);
+        % Compute sigma_f using standard method
+        for n=N:-1:1
+            K = gpfaObj.signs(k,n)^2 * gpfaObj.Kf{k};
+            G = spdiag(gpfaObj.Ns{k}) / gpfaObj.R(n);
+            
+            % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
+            sigma_f{k}{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
         end
-    end
-    
-    % Keep this in sync with GPFA.updateKernelF
-    Kf = GPFA.fixImpossiblePairwiseCorrelations(exp(-ss.^2 / gpfaObj.tauf^2), 2) + (1e-6)*eye(size(ss));
-    
-    % Compute sigma_f using 'padded' Gammas
-    for n=N:-1:1
-        K = gpfaObj.signs(n)^2 * Kf;
-        G = spblkdiag(spdiag(gpfaObj.Ns) / gpfaObj.R(n), sparse(nStimPad, nStimPad));
+        newF(k) = length(gpfaObj.Ns{k});
+    else
+        allStims = [gpfaObj.uSf{k}; setdiff(queryStims{k}, gpfaObj.uSf{k}, 'rows')];
+        [~, queryStimIdx{k}] = ismember(queryStims{k}, allStims, 'rows');
+        nStimPad(k) = size(allStims, 1) - size(gpfaObj.uSf{k}, 1);
         
-        % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
-        sigma_f{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
+        % Compute a new 'ss2', filling in the bottom, right, and corner for 'new' stimulus pairs
+        ss = blkdiag(sqrt(gpfaObj.ss2{k}), zeros(nStimPad(k), nStimPad(k)));
+        for iF=1:size(ss,1)
+            for jF=size(gpfaObj.uSf{k},1)+1:size(ss, 1)
+                ss(iF, jF) = gpfaObj.stim_dist_fun{k}(allStims(iF, :), allStims(jF, :));
+                ss(jF, iF) = ss(iF, jF);
+            end
+        end
+        
+        % Keep this in sync with GPFA.updateKernelF
+        Kf = exp(-ss.^2 / gpfaObj.tauf(k)^2) + 1e-6 * eye(size(ss));
+        
+        % Compute sigma_f using 'padded' Gammas
+        for n=N:-1:1
+            K = gpfaObj.signs(k,n)^2 * Kf;
+            G = spblkdiag(spdiag(gpfaObj.Ns{k}) / gpfaObj.R(n), sparse(nStimPad(k), nStimPad(k)));
+            
+            % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
+            sigma_f{k}{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
+        end
+        newF(k) = size(allStims, 1);
     end
-    newF = size(allStims, 1);
+    baseStimIdx{k} = 1:size(gpfaObj.uSf{k}, 1);
 end
-baseStimIdx = 1:size(gpfaObj.uSf, 1);
 
 % residual is [T x N] and contains Y with the baseline and linear stimulus terms subtracted out
 residual = gpfaObj.Y - gpfaObj.b';
@@ -97,17 +99,24 @@ end
 residual(isnan(residual)) = 0;
 
     function mu_x = updateX(mu_f, last_mu_x)
-        % First, expand mu_f to be [T x N]
-        mu_f_expanded = mu_f(gpfaObj.Sf_ord, :);
+        residualF = residual;
+        for kk=1:gpfaObj.nGP
+            % First, expand mu_f to be [T x N]
+            mu_f_expanded = mu_f{kk}(gpfaObj.Sf_ord{kk}, :);
+            % Subtract of all prediction from kth stimulus tuning term
+            residualF = residualF - mu_f_expanded;
+        end
         
-        residualF = vertcat(residual - mu_f_expanded, zeros(nTimePad, gpfaObj.N));
+        % Pad zeros onto residuals for inference over 'query' time points
+        residualF = vertcat(residualF, zeros(nTimePad, gpfaObj.N));
         
         if L == 0
             mu_x = [];
             return
         elseif L > 1
             mu_x = last_mu_x;
-            % Explaining-away must be handled iteratively due to factorized posterior approximation
+            % Explaining-away across xs must be handled iteratively due to factorized posterior
+            % approximation
             for xitr=1:10
                 for l1=1:L
                     l_other = [1:l1-1 l1+1:L];
@@ -123,23 +132,56 @@ residual(isnan(residual)) = 0;
         end
     end
 
-    function mu_f = updateF(mu_x)
+    function mu_f = updateF(mu_x, last_mu_f)
         if L > 0
             residual_with_x = residual - mu_x * gpfaObj.C';
         else
             residual_with_x = residual;
         end
-        % Currently 'residual' is [T x N] but we need [S x N] version where each row is the sum of
-        % all trials (T) where the stimulus had a particular value (S)
-        residualS = zeros(length(gpfaObj.Ns), N);
-        for iStim=1:length(gpfaObj.Ns)
-            residualS(iStim, :) = sum(residual_with_x(gpfaObj.Sf_ord == iStim, :), 1);
-        end
-        residualS = residualS ./ gpfaObj.R';
-        residualS = vertcat(residualS, zeros(nStimPad, N));
         
-        for nn=N:-1:1
-            mu_f(:, nn) = sigma_f{nn} * residualS(:, nn);
+        % Get prediction for *each* GP stimulus term, to be updated iteratively below.
+        mu_f = last_mu_f;
+        pred_f = cell(size(last_mu_f));
+        for kk=1:gpfaObj.nGP
+            pred_f{kk} = mu_f{kk}(gpfaObj.Sf_ord{kk}, :);
+        end
+        
+        % Explaining-away across different fs must be handled iteratively due to factorized
+        % posterior approximation. Kick-start the iteration by initializing all mu_f to wherever we
+        % left off in the previous outer iteration.
+        if gpfaObj.nGP == 1
+            % Currently 'residual' is [T x N] but we need [S x N] version where each row is the sum
+            % of all trials (T) where the stimulus had a particular value (S)
+            residualS = zeros(length(gpfaObj.Ns{1}), N);
+            for iStim=1:length(gpfaObj.Ns{1})
+                residualS(iStim, :) = sum(residual_with_x(gpfaObj.Sf_ord{1} == iStim, :), 1);
+            end
+            residualS = residualS ./ gpfaObj.R';
+            residualS = vertcat(residualS, zeros(nStimPad, N));
+
+            for nn=N:-1:1
+                mu_f{1}(:, nn) = sigma_f{1}{nn} * residualS(:, nn);
+            end
+        else
+            for fitr=1:5
+                for kk=1:gpfaObj.nGP
+                    k_other = [1:kk-1 kk+1:gpfaObj.nGP];
+                    pred_k_other = sum(cat(3, pred_f{k_other}), 3);
+                    full_residual = residual_with_x - pred_k_other;
+                    % Currently 'residual' is [T x N] but we need [S x N] version where each row is the
+                    % sum of all trials (T) where the stimulus had a particular value (S)
+                    residualS = zeros(length(gpfaObj.Ns{kk}), N);
+                    for iStim=1:length(gpfaObj.Ns{kk})
+                        residualS(iStim, :) = sum(full_residual(gpfaObj.Sf_ord == iStim, :), 1);
+                    end
+                    residualS = residualS ./ gpfaObj.R';
+                    residualSPadded = vertcat(residualS, zeros(nStimPad(kk), N));
+                    
+                    for nn=N:-1:1
+                        mu_f{kk}(:, nn) = sigma_f{kk}{nn} * residualSPadded(:, nn);
+                    end
+                end
+            end
         end
     end
 
@@ -154,14 +196,17 @@ end
 % Initialize with zero latents (simply fit tuning to start), then do a series of coordinate-ascent
 % updates, ultimately converging to the factorized q(x)q(f) which best approximates p(x,f|...)
 mu_x = zeros(newT, L);
-mu_f = zeros(newF, N);
+for k=gpfaObj.nGP:-1:1
+    mu_f{k} = zeros(newF(k), N);
+end
 % Iterate to convergence or max iters
 itr = 2;
 delta = inf;
 while delta(itr-1) > convTol && itr <= maxIters
-    new_mu_f = updateF(mu_x(baseTimeIdx, :));
-    new_mu_x = updateX(new_mu_f(baseStimIdx, :), mu_x);
-    delta(itr) = max([abs(mu_f(:) - new_mu_f(:)); abs(mu_x(:) - new_mu_x(:))]);
+    new_mu_f = updateF(mu_x(baseTimeIdx, :), mu_f);
+    new_base_f = arrayfun(@(k) new_mu_f{k}(baseStimIdx{k}, :), 1:gpfaObj.nGP, 'UniformOutput', false);
+    new_mu_x = updateX(new_base_f, mu_x);
+    delta(itr) = max([abs(cellcat(mu_f) - cellcat(new_mu_f)); abs(mu_x(:) - new_mu_x(:))]);
     mu_f = new_mu_f;
     mu_x = new_mu_x;
     itr = itr + 1;
@@ -171,7 +216,18 @@ end
 mu_x = mu_x(queryTimeIdx, :);
 sigma_x = cellfun(@(sig) sig(queryTimeIdx, queryTimeIdx), sigma_x, 'UniformOutput', false);
 
-mu_f = mu_f(queryStimIdx, :);
-sigma_f = cellfun(@(sig) sig(queryStimIdx, queryStimIdx), sigma_f, 'UniformOutput', false);
+for k=1:gpfaObj.nGP
+    mu_f{k} = mu_f{k}(queryStimIdx{k}, :);
+    sigma_f{k} = cellfun(@(sig) sig(queryStimIdx{k}, queryStimIdx{k}), sigma_f{k}, 'UniformOutput', false);
+end
 
+end
+
+function v = cellcat(c)
+v = zeros(sum(cellfun(@numel, c)), 1);
+j = 1;
+for i=1:length(c)
+    v(j:j+numel(c{i})-1) = c{i}(:);
+    j = j+numel(c{i});
+end
 end

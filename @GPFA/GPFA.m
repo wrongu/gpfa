@@ -8,7 +8,7 @@ classdef GPFA
         R % [N x 1] private variance of each neuron (full covariance is diag(R))
         S % [T x M] stimulus values for linear-tuning model (optional - may be empty)
         D % [N x M] stimulus loadings for linear-tuning model (optional - requires S)
-        Sf% [T x Mf] stimuli for GP stimulus regression (optional - may be empty)
+        Sf% [T x Mf] array or cell array of [T x Mf_k] stimuli for GP regression, where the kth term has dimension Mf_k (optional - may be empty)
         b % [N x 1] bias giving baseline firing rate of each neuron
         times % [1 x T] actual time points (use either 'times' or 'dt', not both)
         dt % [scalar] interval between trials if equi-spaced (use either 'times' or 'dt', not both)
@@ -25,9 +25,9 @@ classdef GPFA
         taus_beta  % [1 x L] beta (rate) parameter of gamma prior on taus
         rho_scale % mean of exponential prior on 'rho' values
         %% --- Stimulus-GP Kernel Parameters ---
-        stim_dist_fun % Function taking in ([1 x Mf], [1 x Mf]) pairs of stimuli and returning a non-negative 'distance' between them
-        signs % [1 x N] variance of stimulus dependence per neuron (essentially quantifies net stimulus modulation)
-        tauf  % scalar length scale parameter for GP tuning
+        stim_dist_fun % Function or cell array of functions taking in ([1 x Mf_k], [1 x Mf_k]) pairs of stimuli and returning a non-negative 'distance' between them
+        signs % [1 x N] or cell array of [1 x N] variance of stimulus dependence per neuron (essentially quantifies net stimulus modulation)
+        tauf  % scalar or [1 x K] array, length scale parameter for GP tuning
         %% --- EM settings ---
         kernel_update_freq % how often (number of iterations) to update the kernel parameters
         fixed % cell array of fixed parameter names
@@ -41,11 +41,12 @@ classdef GPFA
         Gamma % [L x L] cell array of data-dependent part of latent covariance matrices, each [T x T]. (Off-diagonal captures explaining away between latents)
         Cov   % [1 x L] cell array of posterior covariance matrices, inv(inv(K) + Gamma), computed stably for the case when inv(K) is poorly conditioned
         %% --- Useful things for stimulus GP tuning ---
-        uSf    % Unique values of Sf, per row
-        Sf_ord % Ordinal values for GP stimuli Sf, usable as indices into Ns and Kf. Hence Sf=uSf(Sf_ord,:)
-        Ns     % Ns(i) contains the number of trials where stimulus i appeared, corresponding to unique values of Sf_ord
-        Kf     % Precomputed GP Kernel for stimulus tuning
-        ss2    % Squared pairwise distance function between stimuli
+        uSf    % Unique values of Sf, per row (cell array, 1 per each stimulus k)
+        Sf_ord % Ordinal values for GP stimuli Sf, usable as indices into Ns and Kf. Hence Sf=uSf(Sf_ord,:) (cell array, 1 per each stimulus k)
+        Ns     % Ns(i) contains the number of trials where stimulus i appeared, corresponding to unique values of Sf_ord (cell array, 1 per each stimulus k)
+        Kf     % Precomputed GP Kernel for stimulus tuning (cell array, 1 per each stimulus k)
+        ss2    % Squared pairwise distance function between stimuli (cell array, 1 per each stimulus k)
+        nGP    % Number of GP tuning functions per neuron (i.e. number of independent stimulus dimensions)
     end
     
     methods
@@ -93,7 +94,7 @@ classdef GPFA
         function gpfaObj = setFields(gpfaObj, varargin)
             %% Ensure no protected fields are being written
             % TODO - is there an introspective programmatic way to get these?
-            protectedFields = {'K', 'Gamma', 'Cov', 'uSf', 'Sf_ord', 'Ns', 'Kf', 'ss2'};
+            protectedFields = {'K', 'Gamma', 'Cov', 'uSf', 'Sf_ord', 'Ns', 'Kf', 'ss2', 'nGP'};
             
             %% Copy fields from varargin
             allProps = properties(gpfaObj);
@@ -135,7 +136,13 @@ classdef GPFA
             end
             
             if ~isempty(gpfaObj.Sf)
-                assert(size(gpfaObj.Sf, 1) == gpfaObj.T, '''Sf'' must be size [T x Mf]');
+                if iscell(gpfaObj.Sf)
+                    for k=1:length(gpfaObj.Sf)
+                        assert(size(gpfaObj.Sf{k}, 1) == gpfaObj.T, '''Sf'' must be size [T x Mf]');
+                    end
+                else
+                    assert(size(gpfaObj.Sf, 1) == gpfaObj.T, '''Sf'' must be size [T x Mf]');
+                end
             end
             
             if isempty(gpfaObj.times) && isempty(gpfaObj.dt)
@@ -191,33 +198,40 @@ classdef GPFA
             %% Precompute things for stimulus tuning
             
             if ~isempty(gpfaObj.Sf)
-                gpfaObj.uSf = unique(gpfaObj.Sf, 'rows');
-                dim_f = size(gpfaObj.uSf, 1);
+                if ~iscell(gpfaObj.Sf), gpfaObj.Sf = {gpfaObj.Sf}; end
+                gpfaObj.nGP = length(gpfaObj.Sf);
                 
-                if isempty(gpfaObj.stim_dist_fun)
-                    warning('Sf but no stim_dist_fun given; naively assuming euclidean distances!');
-                    gpfaObj.stim_dist_fun = @(s1, s2) sqrt(sum((s1-s2).^2));
-                end
+                if isempty(gpfaObj.tauf), gpfaObj.tauf = ones(1, gpfaObj.nGP); end
+                if isempty(gpfaObj.signs), gpfaObj.signs = ones(gpfaObj.nGP, length(gpfaObj.Sf)); end
+                if ~iscell(gpfaObj.stim_dist_fun), gpfaObj.stim_dist_fun = {gpfaObj.stim_dist_fun}; end
                 
-                ss = zeros(dim_f, dim_f);
-                gpfaObj.Ns = zeros(dim_f, 1);
-                for iStim=1:dim_f
-                    matches = all(gpfaObj.Sf == gpfaObj.uSf(iStim, :), 2);
-                    gpfaObj.Ns(iStim) = sum(matches);
+                % Preprocess each of the K GP stimulus sets
+                for k=gpfaObj.nGP:-1:1
+                    gpfaObj.uSf{k} = unique(gpfaObj.Sf{k}, 'rows');
+                    dim_f = size(gpfaObj.uSf{k}, 1);
                     
-                    for jStim=1:dim_f
-                        ss(iStim, jStim) = gpfaObj.stim_dist_fun(gpfaObj.uSf(iStim, :), gpfaObj.uSf(jStim, :));
+                    if isempty(gpfaObj.stim_dist_fun{k})
+                        warning('Sf but no stim_dist_fun given; naively assuming euclidean distances!');
+                        gpfaObj.stim_dist_fun{k} = @(s1, s2) sqrt(sum((s1-s2).^2));
                     end
+                    
+                    ss = zeros(dim_f, dim_f);
+                    gpfaObj.Ns{k} = zeros(dim_f, 1);
+                    for iStim=1:dim_f
+                        matches = all(gpfaObj.Sf{k} == gpfaObj.uSf{k}(iStim, :), 2);
+                        gpfaObj.Ns{k}(iStim) = sum(matches);
+                        
+                        for jStim=1:dim_f
+                            ss(iStim, jStim) = gpfaObj.stim_dist_fun{k}(gpfaObj.uSf{k}(iStim, :), gpfaObj.uSf{k}(jStim, :));
+                        end
+                    end
+                    
+                    gpfaObj.ss2{k} = ss.^2;
+                    
+                    assert(all(all(gpfaObj.ss2{k} == gpfaObj.ss2{k}')), 'stim_dist_fun must be symmetric!');
+                    
+                    [~, gpfaObj.Sf_ord{k}] = ismember(gpfaObj.Sf{k}, gpfaObj.uSf{k}, 'rows');
                 end
-                
-                gpfaObj.ss2 = ss.^2;
-                
-                assert(all(all(gpfaObj.ss2 == gpfaObj.ss2')), 'stim_dist_fun must be symmetric!');
-                
-                [~, gpfaObj.Sf_ord] = ismember(gpfaObj.Sf, gpfaObj.uSf, 'rows');
-                
-                if isempty(gpfaObj.signs), gpfaObj.signs = ones(1, gpfaObj.N); end
-                if isempty(gpfaObj.tauf), gpfaObj.tauf = 1; end
             end
             
             %% Initialize loadings if they were not provided
@@ -365,18 +379,17 @@ classdef GPFA
         end
         
         function dQ_dlogtauf2 = stimScaleDeriv(gpfaObj, mu_f, sigma_f)
-            dQ_dlogtauf2 = 0;
-            dK_dlogtau2f = gpfaObj.Kf .* gpfaObj.ss2 / gpfaObj.tauf^2;
-            % We can get NaN values here where ss2 is inf and thus Kf is 0.. Clearly the correct
-            % semantics would be for the derivative of these entries to be zero.
-            dK_dlogtau2f(isnan(dK_dlogtau2f)) = 0;
-            dimf = size(gpfaObj.Kf, 1);
-            Ki = gpfaObj.Kf \ speye(dimf);
-            for n=1:gpfaObj.N
-                sign = gpfaObj.signs(n);
-                e_ff_n = mu_f(:,n)*mu_f(:,n)' + sigma_f{n};
-                dQfn_dK = sign^(2*dimf)*Ki - 1/sign^2 * Ki * e_ff_n * Ki;
-                dQ_dlogtauf2 = dQ_dlogtauf2 - 1/2*tracedot(dQfn_dK, dK_dlogtau2f);
+            dQ_dlogtauf2 = zeros(size(gpfaObj.tauf));
+            for k=gpfaObj.nGP:-1:1
+                dK_dlogtau2f = gpfaObj.Kf{k} .* gpfaObj.ss2{k} / gpfaObj.tauf(k)^2;
+                dimf = size(gpfaObj.Kf{k}, 1);
+                Ki = gpfaObj.Kf{k} \ speye(dimf);
+                for n=1:gpfaObj.N
+                    sign = gpfaObj.signs(k,n);
+                    e_ff_n = mu_f{k}(:,n)*mu_f{k}(:,n)' + sigma_f{k}{n};
+                    dQfn_dK = sign^(2*dimf)*Ki - 1/sign^2 * Ki * e_ff_n * Ki;
+                    dQ_dlogtauf2(k) = dQ_dlogtauf2(k) - 1/2*tracedot(dQfn_dK, dK_dlogtau2f);
+                end
             end
         end
         
@@ -463,8 +476,10 @@ classdef GPFA
         function gpfaObj = updateKernelF(gpfaObj)
             % Note: Kf is only [S x S]. The prior covariance per neuron is Kf*signs(n)^2.
             % Adding a small diagonal component for stability
-            gpfaObj.Kf = exp(-gpfaObj.ss2 / gpfaObj.tauf^2);
-            gpfaObj.Kf = GPFA.fixImpossiblePairwiseCorrelations(gpfaObj.Kf, 2) + (1e-6)*eye(size(gpfaObj.ss2));
+            for k=gpfaObj.nGP:-1:1
+                gpfaObj.Kf{k} = exp(-gpfaObj.ss2{k} / gpfaObj.tauf(k)^2);
+                gpfaObj.Kf{k} = gpfaObj.Kf{k} + 1e-6 * eye(size(gpfaObj.Kf{k}));
+            end
         end
         
         function gpfaObj = updateAll(gpfaObj, Y)
@@ -487,33 +502,6 @@ classdef GPFA
             if ~exist('blockinv', 'file')
                 addpath(fullfile('util', 'block-matrix-inverse-tools'));
                 addpath(fullfile('util', 'logdet'));
-            end
-        end
-        
-        function Cov = fixImpossiblePairwiseCorrelations(Cov, recurse)
-            % Correct for impossible 3-variable correlations where the 'distance' function returned
-            % infinity (if X and Y have correlation C_xy, and Y and Z have C_yz, then there
-            % is a minimum correlation between X and Z for the rest of the math to be sane).
-            % Equation from https://math.stackexchange.com/a/586142
-            stdev = sqrt(diag(Cov));
-            Corr = Cov ./ (stdev .* stdev');
-            Corr2 = Corr;
-            idxImpossible = find(triu(Cov == 0));
-            for idx=idxImpossible'
-                [iStim, jStim] = ind2sub(size(Cov), idx);
-                c_xy = Corr(iStim, :);
-                c_yz = Corr(jStim, :);
-                min_corr_xz = c_xy.*c_yz - sqrt((1-c_xy).*(1-c_yz));
-                % corr_xz must be at least as big as the largest minimum 3-way constraint
-                corr_xz = max(min_corr_xz);
-                Corr2(iStim, jStim) = corr_xz;
-                Corr2(jStim, iStim) = corr_xz;
-            end
-            % Convert from Corr back to Cov
-            Cov = Corr2 .* stdev .* stdev';
-            
-            if nargin >= 2 && recurse >= 1
-                Cov = GPFA.fixImpossiblePairwiseCorrelations(Cov, recurse-1);
             end
         end
         

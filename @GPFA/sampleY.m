@@ -18,13 +18,17 @@ end
 
 f_samples = zeros(gpfaObj.T, gpfaObj.N, nSamples);
 if ~isempty(gpfaObj.Sf)
-    % Sample possible tuning curves
-    S = size(gpfaObj.Kf, 1);
-    f_samples = mymvnrnd(mu_f(:)', full(spblkdiag(sigma_f{:})), nSamples);
-    f_samples = reshape(f_samples, S, gpfaObj.N, nSamples);
-    % For each sampled tuning curve, repeat it as many times as it appears per session (convert from
-    % size [S x N x nSamples] to [T x N x nSamples]
-    f_samples = f_samples(gpfaObj.Sf_ord, :, :);
+    for k=1:gpfaObj.nGP
+        % Sample possible tuning curves
+        S = size(gpfaObj.Kf{k}, 1);
+        f_samples_k = mymvnrnd(mu_f{k}(:)', full(spblkdiag(sigma_f{k}{:})), nSamples);
+        f_samples_k = reshape(f_samples_k, S, gpfaObj.N, nSamples);
+        % For each sampled tuning curve, repeat it as many times as it appears per session (convert from
+        % size [S x N x nSamples] to [T x N x nSamples]
+        f_samples_k = f_samples_k(gpfaObj.Sf_ord{k}, :, :);
+        % Add to total tuning samples
+        f_samples = f_samples + f_samples_k;
+    end
 end
 
 % Dot product of L dimension of x with L dimension of C to get [T x N x nSamples] values for the

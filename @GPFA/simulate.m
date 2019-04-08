@@ -24,12 +24,16 @@ end
 if ~isempty(gpfaObj.Sf)
     % Draw values of f from the prior
     if ~exist('f', 'var') || isempty(f)
-        dimf = size(gpfaObj.Kf, 1);
-        f = gpfaObj.signs .* real(sqrtm(gpfaObj.Kf) * randn(dimf, gpfaObj.N));
+        for k=1:gpfaObj.nGP
+            dimf = size(gpfaObj.Kf{k}, 1);
+            f{k} = gpfaObj.signs(k,:) .* real(sqrtm(gpfaObj.Kf{k}) * randn(dimf, gpfaObj.N));
+        end
     end
-    mu_Y = mu_Y + f(gpfaObj.Sf_ord, :);
+    for k=1:gpfaObj.nGP
+        mu_Y = mu_Y + f{k}(gpfaObj.Sf_ord{k}, :);
+    end
 else
-    f = [];
+    f = {};
 end
 
 noise_Y = randn(gpfaObj.T, gpfaObj.N) .* sqrt(gpfaObj.R)';

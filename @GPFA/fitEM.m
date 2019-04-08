@@ -71,11 +71,26 @@ bestFit = gpfaObj;
 end
 
 function v = concatAllParams(obj, params)
-v = zeros(sum(cellfun(@(para) numel(obj.(para)), params)), 1);
+v = zeros(sum(cellfun(@(para) mynumel(obj.(para)), params)), 1);
 j = 1;
 for i=1:length(params)
     value = obj.(params{i});
-    v(j:j+numel(value) - 1) = value(:);
-    j = j + numel(value);
+    if iscell(value)
+        for k=1:length(value)
+            v(j:j+numel(value{k}) - 1) = value{k}(:);
+            j = j+numel(value{k});
+        end
+    else
+        v(j:j+numel(value) - 1) = value(:);
+        j = j + numel(value);
+    end
+end
+end
+
+function n = mynumel(v)
+if iscell(v)
+    n = sum(cellfun(@mynumel, v));
+else
+    n = numel(v);
 end
 end

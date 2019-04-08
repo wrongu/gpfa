@@ -25,7 +25,9 @@ else
 end
 
 if ~isempty(gpfaObj.Sf)
-    stim_predict = stim_predict + mu_f(gpfaObj.Sf_ord, :);
+    for k=1:gpfaObj.nGP
+        stim_predict = stim_predict + mu_f{k}(gpfaObj.Sf_ord{k}, :);
+    end
 end
 
 % Get the sum of the variances (covariance diagonals) of each latent
@@ -78,7 +80,9 @@ if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
     stim_predict = stim_predict - gpfaObj.S * D';
     residual = Y - b' - xC;
     if ~isempty(gpfaObj.Sf)
-        residual = residual - mu_f(gpfaObj.Sf_ord, :);
+        for k=1:gpfaObj.nGP
+            residual = residual - mu_f{k}(gpfaObj.Sf_ord{k}, :);
+        end
     end
     residual(isnan(residual)) = 0;
     D = residual' * gpfaObj.S / (gpfaObj.S' * gpfaObj.S);
@@ -96,8 +100,11 @@ if ~any(strcmp('R', gpfaObj.fixed))
     if isempty(gpfaObj.Sf)
         cov_y_f = 0;
     else
-        var_y_f = cellfun(@(sig_f) dot(gpfaObj.Ns, diag(sig_f)), sigma_f);
-        cov_y_f = diag(var_y_f) / T;
+        cov_y_f = zeros(gpfaObj.N);
+        for k=1:gpfaObj.nGP
+            var_y_f = cellfun(@(sig_f) dot(gpfaObj.Ns{k}, diag(sig_f)), sigma_f{k});
+            cov_y_f = diag(var_y_f) / T;
+        end
     end
     R = diag((residual' * residual) / T + cov_y_x + cov_y_f);
 end
@@ -142,16 +149,18 @@ end
 if ~isempty(gpfaObj.Sf)
     Qf = 0;
     Hf = 0;
-    S = length(gpfaObj.Ns);
-    logdetK = logdet(gpfaObj.Kf);
-    e_ff_n = cell(1, gpfaObj.N);
-    for n=gpfaObj.N:-1:1
-        e_ff_n{n} = sigma_f{n} + mu_f(:,n)*mu_f(:,n)';
-        Qf = Qf - 1/2*(trace((gpfaObj.signs(n)^2 * gpfaObj.Kf) \ e_ff_n{n}) + gpfaObj.signs(n)^(2*S)*logdetK);
-        Hfn = 1/2*logdet(2*pi*exp(1)*sigma_f{n});
-        % Numerical precision and lack of regularization on sigma_f means near-zero determinant
-        % cases appear like imaginary Hfn and negative determinant. Clip Hfn here.
-        Hf = Hf + max(0, real(Hfn));
+    for k=gpfaObj.nGP:-1:1
+        S = length(gpfaObj.Ns{k});
+        logdetK = logdet(gpfaObj.Kf{k});
+        e_ff_kn = cell(gpfaObj.nGP, gpfaObj.N);
+        for n=gpfaObj.N:-1:1
+            e_ff_kn{k,n} = sigma_f{k}{n} + mu_f{k}(:,n)*mu_f{k}(:,n)';
+            Qf = Qf - 1/2*(trace((gpfaObj.signs(k,n)^2 * gpfaObj.Kf{k}) \ e_ff_kn{k,n}) + gpfaObj.signs(k,n)^(2*S)*logdetK);
+            Hfn = 1/2*logdet(2*pi*exp(1)*sigma_f{k}{n});
+            % Numerical precision and lack of regularization on sigma_f means near-zero determinant
+            % cases appear like imaginary Hfn and negative determinant. Clip Hfn here.
+            Hf = Hf + max(0, real(Hfn));
+        end
     end
     Q = Q + Qf;
     H = H + Hf;
@@ -170,9 +179,11 @@ end
         tmpObj = gpfaObj;
         tmpObj.tauf = exp(logtauf2/2);
         tmpObj = tmpObj.updateKernelF();
-        newLogDetK = logdet(tmpObj.Kf);
-        if ~isreal(newLogDetK), newLogDetK = 0; end
-        nQf = sum(arrayfun(@(n) 1/2*(trace((tmpObj.signs(n)^2 * tmpObj.Kf) \ e_ff_n{n}) + tmpObj.signs(n)^(2*S)*newLogDetK), 1:tmpObj.N));
+        for kk=1:gpfaObj.nGP
+            newLogDetK = logdet(tmpObj.Kf{kk});
+            if ~isreal(newLogDetK), newLogDetK = 0; end
+            nQf = sum(arrayfun(@(n) 1/2*(trace((tmpObj.signs(kk,n)^2 * tmpObj.Kf{kk}) \ e_ff_kn{kk,n}) + tmpObj.signs(kk,n)^(2*S)*newLogDetK), 1:tmpObj.N));
+        end
         gradNegQf = -tmpObj.stimScaleDeriv(mu_f, sigma_f);
     end
 

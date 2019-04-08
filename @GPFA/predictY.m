@@ -21,7 +21,9 @@ if ~isempty(gpfaObj.S)
 end
 
 if ~isempty(gpfaObj.Sf)
-    mu_Y = mu_Y + mu_f(gpfaObj.Sf_ord, :);
+    for k=1:gpfaObj.nGP
+        mu_Y = mu_Y + mu_f{k}(gpfaObj.Sf_ord{k}, :);
+    end
 end
 
 end

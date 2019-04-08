@@ -23,6 +23,10 @@ if ~isempty(gpfaObj.Sf)
         S = size(gpfaObj.Kf{k}, 1);
         f_samples_k = mymvnrnd(mu_f{k}(:)', full(spblkdiag(sigma_f{k}{:})), nSamples);
         f_samples_k = reshape(f_samples_k, S, gpfaObj.N, nSamples);
+        if gpfaObj.forceZeroF(k)
+            % TODO - handle the case where no zero-signal exists yet
+            f_samples_k = f_samples_k - f_samples_k(all(gpfaObj.uSf{k} == 0, 2), :, :);
+        end
         % For each sampled tuning curve, repeat it as many times as it appears per session (convert from
         % size [S x N x nSamples] to [T x N x nSamples]
         f_samples_k = f_samples_k(gpfaObj.Sf_ord{k}, :, :);

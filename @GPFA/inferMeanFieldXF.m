@@ -7,6 +7,13 @@ if ~exist('queryStims', 'var') || isempty(queryStims), queryStims = gpfaObj.uSf;
 if ~exist('iters', 'var') || isempty(maxIters), maxIters=500; end
 if ~exist('convTol', 'var') || isempty(convTol), convTol=1e-6; end
 
+for k=1:gpfaObj.nGP
+    if gpfaObj.forceZeroF(k)
+        % Ensure there is a zero point queried
+        queryStims{k} = unique(vertcat(queryStims{k}, zeros(1, size(gpfaObj.Sf{k}, 2))), 'rows');
+    end
+end
+
 L = gpfaObj.L;
 N = gpfaObj.N;
 
@@ -61,6 +68,10 @@ for k=gpfaObj.nGP:-1:1
             sigma_f{k}{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
         end
         newF(k) = length(gpfaObj.Ns{k});
+        
+        if gpfaObj.forceZeroF(k)
+            idxZeroStim(k) = find(all(gpfaObj.uSf{k} == 0, 2));
+        end
     else
         allStims = [gpfaObj.uSf{k}; setdiff(queryStims{k}, gpfaObj.uSf{k}, 'rows')];
         [~, queryStimIdx{k}] = ismember(queryStims{k}, allStims, 'rows');
@@ -87,6 +98,10 @@ for k=gpfaObj.nGP:-1:1
             sigma_f{k}{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
         end
         newF(k) = size(allStims, 1);
+        
+        if gpfaObj.forceZeroF(k)
+            idxZeroStim(k) = find(all(allStims == 0, 2));
+        end
     end
     baseStimIdx{k} = 1:size(gpfaObj.uSf{k}, 1);
 end
@@ -162,6 +177,10 @@ residual(isnan(residual)) = 0;
             for nn=N:-1:1
                 mu_f{1}(:, nn) = sigma_f{1}{nn} * residualS(:, nn);
             end
+            
+            if gpfaObj.forceZeroF
+                mu_f{1} = mu_f{1} - mu_f{1}(idxZeroStim, :);
+            end
         else
             for fitr=1:5
                 for kk=1:gpfaObj.nGP
@@ -172,13 +191,17 @@ residual(isnan(residual)) = 0;
                     % sum of all trials (T) where the stimulus had a particular value (S)
                     residualS = zeros(length(gpfaObj.Ns{kk}), N);
                     for iStim=1:length(gpfaObj.Ns{kk})
-                        residualS(iStim, :) = sum(full_residual(gpfaObj.Sf_ord == iStim, :), 1);
+                        residualS(iStim, :) = sum(full_residual(gpfaObj.Sf_ord{kk} == iStim, :), 1);
                     end
                     residualS = residualS ./ gpfaObj.R';
                     residualSPadded = vertcat(residualS, zeros(nStimPad(kk), N));
                     
                     for nn=N:-1:1
                         mu_f{kk}(:, nn) = sigma_f{kk}{nn} * residualSPadded(:, nn);
+                    end
+            
+                    if gpfaObj.forceZeroF(kk)
+                        mu_f{kk} = mu_f{kk} - mu_f{kk}(idxZeroStim(kk), :);
                     end
                 end
             end

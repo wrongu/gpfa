@@ -27,6 +27,10 @@ if ~isempty(gpfaObj.Sf)
         for k=1:gpfaObj.nGP
             dimf = size(gpfaObj.Kf{k}, 1);
             f{k} = gpfaObj.signs(k,:) .* real(sqrtm(gpfaObj.Kf{k}) * randn(dimf, gpfaObj.N));
+            if gpfaObj.forceZeroF(k)
+                % TODO - handle the case where no zero-signal exists yet
+                f{k} = f{k} - f{k}(all(gpfaObj.uSf{k} == 0, 2), :);
+            end
         end
     end
     for k=1:gpfaObj.nGP

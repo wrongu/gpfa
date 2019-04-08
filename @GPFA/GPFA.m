@@ -28,6 +28,7 @@ classdef GPFA
         stim_dist_fun % Function or cell array of functions taking in ([1 x Mf_k], [1 x Mf_k]) pairs of stimuli and returning a non-negative 'distance' between them
         signs % [1 x N] or cell array of [1 x N] variance of stimulus dependence per neuron (essentially quantifies net stimulus modulation)
         tauf  % scalar or [1 x K] array, length scale parameter for GP tuning
+        forceZeroF % scalar logical or [1 x K] logical array: whether to force f(0)=0 for each stimulus dimension
         %% --- EM settings ---
         kernel_update_freq % how often (number of iterations) to update the kernel parameters
         fixed % cell array of fixed parameter names
@@ -142,6 +143,11 @@ classdef GPFA
                     end
                 else
                     assert(size(gpfaObj.Sf, 1) == gpfaObj.T, '''Sf'' must be size [T x Mf]');
+                    gpfaObj.Sf = {gpfaObj.Sf};
+                end
+            
+                if isempty(gpfaObj.forceZeroF)
+                    gpfaObj.forceZeroF = false(1, length(gpfaObj.Sf));
                 end
             end
             
@@ -204,6 +210,8 @@ classdef GPFA
                 if isempty(gpfaObj.tauf), gpfaObj.tauf = ones(1, gpfaObj.nGP); end
                 if isempty(gpfaObj.signs), gpfaObj.signs = ones(gpfaObj.nGP, length(gpfaObj.Sf)); end
                 if ~iscell(gpfaObj.stim_dist_fun), gpfaObj.stim_dist_fun = {gpfaObj.stim_dist_fun}; end
+
+                if isscalar(gpfaObj.forceZeroF), gpfaObj.forceZeroF = gpfaObj.forceZeroF*ones(1, gpfaObj.nGP); end
                 
                 % Preprocess each of the K GP stimulus sets
                 for k=gpfaObj.nGP:-1:1

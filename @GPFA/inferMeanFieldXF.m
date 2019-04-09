@@ -7,10 +7,10 @@ if ~exist('queryStims', 'var') || isempty(queryStims), queryStims = gpfaObj.uSf;
 if ~exist('iters', 'var') || isempty(maxIters), maxIters=500; end
 if ~exist('convTol', 'var') || isempty(convTol), convTol=1e-6; end
 
-for k=1:gpfaObj.nGP
+for k=gpfaObj.nGP:-1:1
     if gpfaObj.forceZeroF(k)
         % Ensure there is a zero point queried
-        queryStims{k} = unique(vertcat(queryStims{k}, zeros(1, size(gpfaObj.Sf{k}, 2))), 'rows');
+        augmentedQueryStims{k} = unique(vertcat(queryStims{k}, zeros(1, size(gpfaObj.Sf{k}, 2))), 'rows');
     end
 end
 
@@ -55,7 +55,7 @@ baseTimeIdx = 1:gpfaObj.T;
 
 % Handle 'query' tuning curve indices
 for k=gpfaObj.nGP:-1:1
-    if all(size(queryStims{k}) == size(gpfaObj.uSf{k})) && all(queryStims{k}(:) == gpfaObj.uSf{k}(:))
+    if all(size(augmentedQueryStims{k}) == size(gpfaObj.uSf{k})) && all(augmentedQueryStims{k}(:) == gpfaObj.uSf{k}(:))
         queryStimIdx{k} = 1:size(gpfaObj.uSf{k}, 1);
         nStimPad(k) = 0;
         
@@ -73,7 +73,7 @@ for k=gpfaObj.nGP:-1:1
             idxZeroStim(k) = find(all(gpfaObj.uSf{k} == 0, 2));
         end
     else
-        allStims = [gpfaObj.uSf{k}; setdiff(queryStims{k}, gpfaObj.uSf{k}, 'rows')];
+        allStims = [gpfaObj.uSf{k}; setdiff(augmentedQueryStims{k}, gpfaObj.uSf{k}, 'rows')];
         [~, queryStimIdx{k}] = ismember(queryStims{k}, allStims, 'rows');
         nStimPad(k) = size(allStims, 1) - size(gpfaObj.uSf{k}, 1);
         

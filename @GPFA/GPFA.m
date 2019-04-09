@@ -208,7 +208,7 @@ classdef GPFA
                 gpfaObj.nGP = length(gpfaObj.Sf);
                 
                 if isempty(gpfaObj.tauf), gpfaObj.tauf = ones(1, gpfaObj.nGP); end
-                if isempty(gpfaObj.signs), gpfaObj.signs = ones(gpfaObj.nGP, length(gpfaObj.Sf)); end
+                if isempty(gpfaObj.signs), gpfaObj.signs = ones(gpfaObj.nGP, gpfaObj.N); end
                 if ~iscell(gpfaObj.stim_dist_fun), gpfaObj.stim_dist_fun = {gpfaObj.stim_dist_fun}; end
 
                 if isscalar(gpfaObj.forceZeroF), gpfaObj.forceZeroF = gpfaObj.forceZeroF*ones(1, gpfaObj.nGP); end

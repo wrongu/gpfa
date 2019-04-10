@@ -1,4 +1,4 @@
-function [mu_Y] = predictY(gpfaObj, mu_x, mu_f)
+function [mu_Y, mu_Ysq] = predictY(gpfaObj, mu_x, mu_f)
 
 if isempty(gpfaObj.Sf)
     if ~exist('mu_x', 'var')
@@ -26,4 +26,21 @@ if ~isempty(gpfaObj.Sf)
     end
 end
 
+if nargout >= 2
+    % Using E[Y^2] = E[Y]^2 + var(Y), and var(Y) being the sum of variances due to each latent term
+    [~, sig_x, ~, sig_f] = gpfaObj.inferMeanFieldXF();
+    
+    mu_Ysq = mu_Y.^2;
+    
+    for l=1:gpfaObj.L
+        mu_Ysq = mu_Ysq + diag(sig_x{l}) * gpfaObj.C(:, l).^2;
+    end
+    
+    for k=1:gpfaObj.nGP
+        for n=1:gpfaObj.N
+            var_f = diag(sig_f{k}{n});
+            mu_Ysq(:,n) = mu_Ysq(:,n) + var_f(gpfaObj.Sf_ord{k});
+        end
+    end
+end
 end

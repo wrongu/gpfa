@@ -270,7 +270,7 @@ classdef GPFA
         
         %% Simulation / Generate Data
         [Yhat, x, f] = simulate(gpfaObj, x, f)
-        [mu_Y] = predictY(gpfaObj, mu_x, mu_f)
+        [mu_Y, mu_Ysq] = predictY(gpfaObj, mu_x, mu_f)
         [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x, mu_f, sigma_f)
         
         %% Save to disk while reasonably managing file sizes

@@ -378,8 +378,13 @@ classdef GPFA
                 dQ_dKl = Kli * e_xx_l * Kli - Kli; %#ok<MINV>
                 dt2_div_tau2 = dt2./(2*tau^2);
                 dKl_dlogtaul2 = 0.5 * gpfaObj.sigs(l)^2 * exp(-dt2_div_tau2) .* dt2_div_tau2;
-                % Matrix chain rule plus prior gradient
-                dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:) + (alph - beta*tau)/2;
+                % Matrix chain rule plus prior gradient. Note that since MAP is not invariant to
+                % reparameterization, the gradients here deliberately do not take into account the
+                % |dtau/dlogtau2| change-of-variables term. The upshot is that we are taking
+                % gradients with respect to log(tau^2) towards finding the MAP point with respect to
+                % plain old tau.
+                dPrior_dlogtau2 = (alph - 1 - beta*tau)/2;
+                dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:) + dPrior_dlogtau2;
                 % Rho is easier since it doesn't depend on time differences; include a derivative on
                 % the prior
                 dQ_dlogrho2(l) = sum(diag(dQ_dKl))*rho^2 - rho/(2*gpfaObj.rho_scale(l));

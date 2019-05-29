@@ -312,19 +312,20 @@ classdef GPFA
                 gpfaObj.C = [];
             elseif ~any(strcmp('C', gpfaObj.fixed))
                 if ~any(isnan(gpfaObj.Y(:)))
-                    uTaus = unique(gpfaObj.taus);
-                    for i=1:length(uTaus)
-                        kernel = exp(-0.5*(gpfaObj.times - gpfaObj.times').^2 / uTaus(i)^2);
-                        kernel = kernel ./ sum(kernel, 2);
-                        % This dot product is [T x T] x [T x N]; it averages together data with a
-                        % 'window' that depends on the kernel size and time points.
-                        dataSmooth = kernel * residuals;
-                        % Use top principal components of 'smoothed' data to initialize loadings at this
-                        % time-scale
-                        smoothCov = nancov(dataSmooth, 'pairwise');
-                        nTaus = sum(gpfaObj.taus == uTaus(i));
-                        [gpfaObj.C(:, gpfaObj.taus == uTaus(i)), ~] = eigs(smoothCov, nTaus);
-                    end
+                    avgTau = mean(gpfaObj.taus);
+                    kernel = exp(-0.5*(gpfaObj.times - gpfaObj.times').^2 / avgTau^2);
+                    kernel = kernel ./ sum(kernel, 2);
+                    % This dot product is [T x T] x [T x N]; it averages together data with a
+                    % 'window' that depends on the kernel size and time points.
+                    dataSmooth = kernel * residuals;
+                    % Use top principal components of 'smoothed' data to initialize loadings at this
+                    % time-scale
+                    smoothCov = nancov(dataSmooth, 'pairwise');
+                    [gpfaObj.C, ~] = eigs(smoothCov, gpfaObj.L);
+                    % Scale the loadings to match the projected variance of the data
+                    variances = sum(gpfaObj.C .* (nancov(gpfaObj.Y) * gpfaObj.C), 1);
+                    variances(variances == 0) = 1;
+                    gpfaObj.C = gpfaObj.C .* sqrt(variances);
                 else
                     % If there is missing data, the above smoothing method will likely fail.
                     % Initialize loadings randomly.

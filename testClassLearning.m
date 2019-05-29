@@ -2,7 +2,7 @@
 
 N = 30;
 T = 100;
-L = 0;
+L = 3;
 M = 5;
 
 os = ones(1, L);
@@ -10,7 +10,7 @@ os = ones(1, L);
 R = .05 * exp(randn(N, 1) * .2);
 taus = gamrnd(2, 10, 1, L);
 sigs = .3 * os;
-rhos = .01 * os;
+rhos = .001 * os;
 
 b = 10 * rand(N, 1);
 C = zeros(N, L);

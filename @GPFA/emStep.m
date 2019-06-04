@@ -41,9 +41,18 @@ y_resid_Ri = y_resid ./ R';
 
 logdet_R = sum(log(2*pi*R));
 if gpfaObj.L > 0
-    trace_gamma_sigma = sum(arrayfun(@(l) Gamma{l,l}(:)'*sigma_x{l}(:), 1:L));
+    xGx = 0;
+    trace_gamma_sigma = 0;
+    for l1=1:gpfaObj.L
+        % Note: Gamma is a diagonal matrix, so trace(G*S) is dot(diag(G),diag(S))
+        trace_gamma_sigma = trace_gamma_sigma + dot(diag(Gamma{l1,l1}), diag(sigma_x{l1}));
+        for l2=1:gpfaObj.L
+            xGx = xGx + mu_x(:,l1)' * Gamma{l1, l2} * mu_x(:,l2);
+        end
+    end
+
     Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)) - 2 * sum(sum(y_resid_Ri .* (mu_x * C'))) ...
-        + vec(mu_x)' * cell2mat(Gamma) * vec(mu_x) + trace_gamma_sigma);
+        + xGx + trace_gamma_sigma);
 else
     Q = -1/2 * (T * logdet_R + sum(sum(y_resid .* y_resid_Ri)));
 end
@@ -204,6 +213,10 @@ gpfaObj.R = R;
 
 %% Update precomputed matrices
 gpfaObj = gpfaObj.updateAll();
+
+%% Ensure outputs are in CPU memory
+Q = gather(Q);
+H = gather(H);
 
 end
 

@@ -28,7 +28,7 @@ else
     gpfaObj.dt = [];
     gpfaObj.times = allTimes;
     gpfaObj = gpfaObj.updateK();
-    Gamma = cellfun(@(G) spblkdiag(G, sparse(nPad, nPad)), gpfaObj.Gamma, 'UniformOutput', false);
+    Gamma = cellfun(@(G) padarray(G, [nPad nPad], 0, 'post'), gpfaObj.Gamma, 'UniformOutput', false);
     % The following is a copy of gpfaObj.updateCov
     for l=L:-1:1
         K = gpfaObj.K{l};
@@ -59,14 +59,14 @@ if L > 1
             for l2=l_other
                 proj_x_other = proj_x_other + Gamma{l, l2} * mu_x(:, l2);
             end
-            mu_x(:, l) = sigma_x{l} * (residual * RiC(:, l) - proj_x_other);
+            mu_x(:, l) = gather(sigma_x{l} * (residual * RiC(:, l) - proj_x_other));
         end
     end
 else
-    mu_x = sigma_x{1} * residual * RiC;
+    mu_x = gather(sigma_x{1} * residual * RiC);
 end
 
 mu_x = mu_x(queryIdx, :);
-sigma_x = cellfun(@(sig) sig(queryIdx, queryIdx), sigma_x, 'UniformOutput', false);
+sigma_x = cellfun(@(sig) gather(sig(queryIdx, queryIdx)), sigma_x, 'UniformOutput', false);
 
 end

@@ -41,8 +41,8 @@ else
     gpfaObj.dt = [];
     gpfaObj.times = allTimes;
     gpfaObj = gpfaObj.updateK();
-    Gamma = cellfun(@(G) spblkdiag(G, sparse(nTimePad, nTimePad)), gpfaObj.Gamma, 'UniformOutput', false);
-    % The following is a copy of gpfaObj.updateCov
+    Gamma = cellfun(@(G) padarray(G, [nTimePad nTimePad], 0, 'post'), gpfaObj.Gamma, 'UniformOutput', false);
+    
     % The following is a copy of gpfaObj.updateCov
     for l=L:-1:1
         K = gpfaObj.K{l};
@@ -92,7 +92,7 @@ for k=gpfaObj.nGP:-1:1
         % Compute sigma_f using 'padded' Gammas
         for n=N:-1:1
             K = gpfaObj.signs(k,n)^2 * Kf;
-            G = spblkdiag(spdiag(gpfaObj.Ns{k}) / gpfaObj.R(n), sparse(nStimPad(k), nStimPad(k)));
+            G = padarray(spdiag(gpfaObj.Ns{k}) / gpfaObj.R(n), [nStimPad(k) nStimPad(k)], 0, 'post');
             
             % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
             sigma_f{k}{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
@@ -139,11 +139,11 @@ residual(isnan(residual)) = 0;
                     for l2=l_other
                         proj_x_other = proj_x_other + Gamma{l1, l2} * mu_x(:, l2);
                     end
-                    mu_x(:, l1) = sigma_x{l1} * (residualF * RiC(:, l1) - proj_x_other);
+                    mu_x(:, l1) = gether(sigma_x{l1} * (residualF * RiC(:, l1) - proj_x_other));
                 end
             end
         else
-            mu_x = sigma_x{1} * residualF * RiC;
+            mu_x = gather(sigma_x{1} * residualF * RiC);
         end
     end
 
@@ -237,7 +237,7 @@ end
 
 % Subselect to get 'queried' points
 mu_x = mu_x(queryTimeIdx, :);
-sigma_x = cellfun(@(sig) sig(queryTimeIdx, queryTimeIdx), sigma_x, 'UniformOutput', false);
+sigma_x = cellfun(@(sig) gather(sig(queryTimeIdx, queryTimeIdx)), sigma_x, 'UniformOutput', false);
 
 for k=1:gpfaObj.nGP
     mu_f{k} = mu_f{k}(queryStimIdx{k}, :);

@@ -1,7 +1,7 @@
 %% Generate ground truth data
 
 N = 30;
-T = 100;
+T = 500;
 L = 3;
 M = 5;
 
@@ -154,3 +154,45 @@ xlabel('trials');
 ylabel('neurons');
 title('residuals (predict Y with fitted model)');
 colorbar;
+
+%% Try fitting for different sized data subsets, with and without GPU acceleration
+
+fractions = linspace(0.1, 1, 10);
+times = 1:T;
+iters = 50;
+
+for ifrac=1:length(fractions)
+    subset = randperm(T, round(T*fractions(ifrac)));
+    
+    %% CPU version
+    init = GPFA('Y', simData(subset, :), 'L', L, 'times', times(subset), 'taus', taus, 'rhos', rhos, ...
+        'sigs', sigs, 'S', S(subset, :), 'taus_alpha', 2*os, 'taus_beta', .1*os, 'kernel_update_freq', 10);
+    tstart = tic;
+    [~, Q_CPU{ifrac}] = init.fitEM(iters, 1e-6);
+    elapsedCPU(ifrac) = toc(tstart);
+    
+    %% GPU version
+    init = init.setFields('useGPU', true);
+    tstart = tic;
+    [~, Q_GPU{ifrac}] = init.fitEM(iters, 1e-6);
+    elapsedGPU(ifrac) = toc(tstart);
+end
+
+figure;
+subplot(1,2,1);
+hold on;
+plot(round(fractions*T), elapsedCPU);
+plot(round(fractions*T), elapsedGPU);
+xlabel('timepoints');
+ylabel('fitting time');
+legend('CPU', 'GPU');
+
+subplot(1,2,2);
+hold on;
+colors = lines(length(fractions));
+for ifrac=1:length(fractions)
+    plot(Q_CPU{ifrac}, '-', 'Color', colors(ifrac,:), 'DisplayName', sprintf('T = %d', round(fractions(ifrac)*T)));
+    plot(Q_GPU{ifrac}, 'o', 'Color', colors(ifrac,:), 'DisplayName', sprintf('T = %d', round(fractions(ifrac)*T)));
+end
+xlabel('iteration');
+ylabel('Q');

@@ -34,6 +34,7 @@ classdef GPFA
         fixed % cell array of fixed parameter names
         lr    % learning rate for gradient-based updates
         lr_decay  % half-life of learning rate for simulated annealing
+        useGPU % flag indicating whether to use GPU accelration on matrix operations
     end
     
     properties% (Access = protected)
@@ -241,13 +242,27 @@ classdef GPFA
                     [~, gpfaObj.Sf_ord{k}] = ismember(gpfaObj.Sf{k}, gpfaObj.uSf{k}, 'rows');
                 end
             end
-            
-            %% Initialize loadings if they were not provided
+
+            %% Defaults for EM settings
             
             if isempty(gpfaObj.fixed), gpfaObj.fixed = {}; end
             if isempty(gpfaObj.lr), gpfaObj.lr = 0.001; end
             if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 100; end
             if isempty(gpfaObj.kernel_update_freq), gpfaObj.kernel_update_freq = 1; end
+            if isempty(gpfaObj.useGPU), gpfaObj.useGPU = false; end
+
+
+            % Verify that GPU is available if selected
+            if gpfaObj.useGPU
+                try
+                    G = gpuArray(eye(3));
+                catch e
+                    warning('useGPU was set to true, but GPU is not available. Message:\n%s', getReport(e));
+                    gpfaObj.useGPU = false;
+                end
+            end
+            
+            %% Initialize loadings if they were not provided
             
             gpfaInit = gpfaObj.initialize();
             
@@ -385,10 +400,10 @@ classdef GPFA
                 % gradients with respect to log(tau^2) towards finding the MAP point with respect to
                 % plain old tau.
                 dPrior_dlogtau2 = (alph - 1 - beta*tau)/2;
-                dQ_dlogtau2(l) = dQ_dKl(:)' * dKl_dlogtaul2(:) + dPrior_dlogtau2;
+                dQ_dlogtau2(l) = gather(sum(sum(dQ_dKl .* dKl_dlogtaul2))) + dPrior_dlogtau2;
                 % Rho is easier since it doesn't depend on time differences; include a derivative on
                 % the prior
-                dQ_dlogrho2(l) = sum(diag(dQ_dKl))*rho^2 - rho/(2*gpfaObj.rho_scale(l));
+                dQ_dlogrho2(l) = gather(sum(diag(dQ_dKl)))*rho^2 - rho/(2*gpfaObj.rho_scale(l));
             end
         end
         
@@ -422,6 +437,12 @@ classdef GPFA
                 ts = gpfaObj.times;
             else
                 error('Need either ''times'' or ''dt''');
+            end
+
+            % Transfer O(T) time points to GPU memory so that O(T^2) update of K itself happens on
+            % the GPU
+            if gpfaObj.useGPU
+                ts = gpuArray(ts);
             end
             
             timeDiffs2 = (ts - ts').^2;
@@ -466,6 +487,20 @@ classdef GPFA
                     end
                 end
             end
+                
+            % NOTE: as of version 2019a, Matlab's support for sparse gpuArrays is still limited. We
+            % could either use a full gpuArray or a sparse normal array for Gamma. It seems to be a
+            % better idea to do O(T) operations can happen on the CPU than to transfer O(T^2)
+            % matrices back and forth from CPU to GPU memory. If Mathworks someday fixes this, the
+            % following should be uncommented:
+
+            % if gpfaObj.useGPU
+            %     for l1=1:gpfaObj.L
+            %         for l2=1:gpfaObj.L
+            %             gpfaObj.Gamma{l1, l2} = gpuArray(gpfaObj.Gamma{l1, l2});
+            %         end
+            %     end
+            % end
         end
         
         function gpfaObj = updateCov(gpfaObj)

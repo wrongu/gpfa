@@ -555,7 +555,14 @@ classdef GPFA
         end
         
         function gpfaObj = loadobj(gpfaObj)
+            holdGPU = gpfaObj.useGPU;
+            gpfaObj.useGPU = false;
+            % updateAll() fails if gpfaObj.useGPU was true when saved but this machine doesn't
+            % support CUDA. setFields() handles it more gracefully, just printing a warning.
             gpfaObj = gpfaObj.updateAll();
+            warning backtrace off;
+            gpfaObj = gpfaObj.setFields('useGPU', holdGPU);
+            warning backtrace on;
         end
     end
 end

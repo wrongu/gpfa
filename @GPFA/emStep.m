@@ -20,7 +20,7 @@ if isempty(gpfaObj.Sf)
     [mu_x, sigma_x] = gpfaObj.inferX();
 else
     % Convergence tolerance for mu_x and mu_f gets more strict as iterations go on
-    tolerance = 1e-1 * (1/2)^((itr-1) / gpfaObj.lr_decay);
+    tolerance = eps + 1e-3 * (1/2)^((itr-1) / gpfaObj.lr_decay);
     [mu_x, sigma_x, mu_f, sigma_f] = gpfaObj.inferMeanFieldXF([], [], [], tolerance);
 end
 
@@ -121,38 +121,37 @@ end
 update_tau = ~any(strcmp('taus', gpfaObj.fixed));
 update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
 
-if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 1
-    lr = gpfaObj.lr * (1/2)^((itr-1) / gpfaObj.lr_decay);
+    function [nQt, gradNegQt] = negQt(logtau2_logrho2)
+        inner_logtau2s = logtau2_logrho2(1, :);
+        inner_logrho2s = logtau2_logrho2(2, :);
+        
+        tmpObj = gpfaObj;
+        
+        if ~any(strcmp('taus', gpfaObj.fixed))
+            tmpObj.taus = exp(inner_logtau2s / 2);
+        end
+        
+        if ~any(strcmp('rhos', gpfaObj.fixed))
+            tmpObj.rhos = exp(inner_logrho2s / 2);
+        end
+        
+        tmpObj = tmpObj.updateK();
+        
+        nQt = -tmpObj.timescaleQ(mu_x, sigma_x);
+        [dQ_dlogtau2, dQ_dlogrho2] = tmpObj.timescaleDeriv(mu_x, sigma_x);
+        
+        gradNegQt = vertcat(-dQ_dlogtau2 * update_tau, -dQ_dlogrho2 * update_rho);
+    end
 
+if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 1
+    opts = optimoptions('fminunc', 'Algorithm', 'trust-region', 'SpecifyObjectiveGradient', true, ...
+        'Display', 'none');
     logtau2s = 2*log(gpfaObj.taus);
     logrho2s = 2*log(gpfaObj.rhos);
+    [newLogTau2LogRho2, ~] = fminunc(@negQt, vertcat(logtau2s, logrho2s), opts);
     
-    % Perform some number of gradient steps on timescales
-    for step=1:25
-        % Get gradient
-        [dQ_dlogtau2, dQ_dlogrho2] = gpfaObj.timescaleDeriv(mu_x, sigma_x);
-        
-        % Step tau
-        if ~any(strcmp('taus', gpfaObj.fixed))
-            logtau2s = logtau2s + lr * dQ_dlogtau2;
-            gpfaObj.taus = exp(logtau2s / 2);
-        end
-        
-        % Step rho
-        if ~any(strcmp('rhos', gpfaObj.fixed))
-            logrho2s = logrho2s + lr * dQ_dlogrho2;
-            gpfaObj.rhos = exp(logrho2s / 2);
-        end
-        
-        % Update K for next iteration (note: important that we only update K and not Cov here, as
-        % any update to expectations of x changes the underlying Q we're optimizing).
-        gpfaObj = gpfaObj.updateK();
-        
-        % Break when changes get small
-        if abs(lr*dQ_dlogtau2) + abs(lr*dQ_dlogrho2) < 1e-9
-            break
-        end
-    end
+    gpfaObj.taus = exp(newLogTau2LogRho2(1, :) / 2);
+    gpfaObj.rhos = exp(newLogTau2LogRho2(2, :) / 2);
 end
 
 if ~isempty(gpfaObj.Sf)

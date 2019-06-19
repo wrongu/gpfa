@@ -137,10 +137,10 @@ update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
         
         tmpObj = tmpObj.updateK();
         
-        nQt = -tmpObj.timescaleQ(mu_x, sigma_x);
+        nQt = double(-tmpObj.timescaleQ(mu_x, sigma_x));
         [dQ_dlogtau2, dQ_dlogrho2] = tmpObj.timescaleDeriv(mu_x, sigma_x);
         
-        gradNegQt = vertcat(-dQ_dlogtau2 * update_tau, -dQ_dlogrho2 * update_rho);
+        gradNegQt = double(vertcat(-dQ_dlogtau2 * update_tau, -dQ_dlogrho2 * update_rho));
     end
 
 if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 1

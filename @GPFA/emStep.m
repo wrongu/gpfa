@@ -116,6 +116,7 @@ if ~any(strcmp('R', gpfaObj.fixed))
         end
     end
     R = diag((residual' * residual) / T + cov_y_x + cov_y_f);
+    R = max(R, 1e-6);
 end
 
 update_tau = ~any(strcmp('taus', gpfaObj.fixed));

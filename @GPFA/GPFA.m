@@ -353,7 +353,7 @@ classdef GPFA
             % Initialize private variance R using residuals from the stimulus prediction only,
             % scaled up by 10 because over-estimating variance early helps keep EM stable.
             if ~any(strcmp('R', gpfaObj.fixed))
-                gpfaObj.R = 10 * nanvar(residuals, [], 1)';
+                gpfaObj.R = 10 * nanvar(residuals, [], 1)' + 1e-6;
             end
         end
         

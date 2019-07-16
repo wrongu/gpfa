@@ -1,5 +1,7 @@
 function [bestFit, Qs, Hs, converged] = fitEM(gpfaObj, maxIters, convergenceTol, startIter)
 
+if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
+
 if ~exist('convergenceTol', 'var'), convergenceTol = 1e-6; end
 
 if ~exist('startIter', 'var'), startIter = 1; end

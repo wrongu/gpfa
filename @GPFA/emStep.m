@@ -1,4 +1,6 @@
 function [gpfaObj, Q, H] = emStep(gpfaObj, itr)
+if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
+
 R = gpfaObj.R;
 T = gpfaObj.T;
 L = gpfaObj.L;

@@ -2,6 +2,8 @@ function [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj, queryTimes, 
 
 assert(~isempty(gpfaObj.Sf), 'Sf is empty - use inferX instead!');
 
+if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
+
 if ~exist('queryTimes', 'var') || isempty(queryTimes), queryTimes = gpfaObj.times; end
 if ~exist('queryStims', 'var') || isempty(queryStims), queryStims = gpfaObj.uSf; end
 if ~exist('iters', 'var') || isempty(maxIters), maxIters=500; end

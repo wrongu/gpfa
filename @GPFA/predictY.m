@@ -1,5 +1,7 @@
 function [mu_Y, mu_Ysq] = predictY(gpfaObj, mu_x, mu_f)
 
+if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
+
 if isempty(gpfaObj.Sf)
     if ~exist('mu_x', 'var')
         mu_x = gpfaObj.inferX();

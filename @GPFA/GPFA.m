@@ -37,7 +37,7 @@ classdef GPFA
         useGPU % flag indicating whether to use GPU accelration on matrix operations
     end
     
-    properties% (Access = protected)
+    properties%(Access = protected)
         %% --- Precomputed matrices ---
         K     % [1 x L] cell array of prior covariances, each [T x T]
         Gamma % [L x L] cell array of data-dependent part of latent covariance matrices, each [T x T]. (Off-diagonal captures explaining away between latents)
@@ -49,6 +49,10 @@ classdef GPFA
         Kf     % Precomputed GP Kernel for stimulus tuning (cell array, 1 per each stimulus k)
         ss2    % Squared pairwise distance function between stimuli (cell array, 1 per each stimulus k)
         nGP    % Number of GP tuning functions per neuron (i.e. number of independent stimulus dimensions)
+    end
+    
+    properties (Access = private)
+        initialized % whether updateAll() has been called to populate the large [T x T] matrices
     end
     
     methods
@@ -88,6 +92,9 @@ classdef GPFA
             if ~isempty(missingArgs)
                 error('Missing reqiured input(s): %s', strjoin(missingArgs, ', '));
             end
+            
+            %% Until one of the large matrices is accessed, we leave them all unitialized
+            gpfaObj.initialized = false;
             
             %% Get all other fields from varargin and initialize everything
             gpfaObj = gpfaObj.setFields(varargin{argStart:end});
@@ -271,8 +278,10 @@ classdef GPFA
             if isempty(gpfaObj.D), gpfaObj.D = gpfaInit.D; end
             if isempty(gpfaObj.R), gpfaObj.R = gpfaInit.R; end
             
-            % Initialize all 'precomputed' matrices
-            gpfaObj = gpfaObj.updateAll();
+            % Initialize all 'precomputed' matrices if they're already in memory anyway
+            if gpfaObj.initialized
+                gpfaObj = gpfaObj.updateAll();
+            end
         end
         
         %% Inference
@@ -290,8 +299,11 @@ classdef GPFA
         
         %% Save to disk while reasonably managing file sizes
         function gpfaObj = saveobj(gpfaObj)
-            % Remove large fields that can be reconstructed inside @loadobj, which is defined below
-            % since it's required to be a static method
+            % Remove large fields that can be reconstructed after re-loading, and indicate this by
+            % setting the 'initialized' flag to false. Also, flag 'useGPU' as false since data may
+            % be saved from a CUDA-enabled machine and loaded from a CPU-only machine
+            gpfaObj.initialized = false;
+            gpfaObj.useGPU = false;
             gpfaObj.K = {};
             gpfaObj.Gamma = {};
             gpfaObj.Cov = {};
@@ -301,6 +313,11 @@ classdef GPFA
     methods (Access = protected)
         %% Helper to initialize parameters based on data
         function gpfaObj = initialize(gpfaObj)
+            % An unfortunate misnomer: the initialize() function does not set initialized=True. This
+            % function is responsible for initializing everything *except* the large [T x T] arrays.
+            % Initializing those arrays (and setting initialized=True) is done inside
+            % GPFA.updateAll()
+            
             % Initialize mean b using mean of data
             if ~any(strcmp('b', gpfaObj.fixed))
                 gpfaObj.b = nanmean(gpfaObj.Y, 1)';
@@ -359,6 +376,7 @@ classdef GPFA
         
         %% Derivative and Q function value w.r.t. GP scales
         function Q = timescaleQ(gpfaObj, mu_x, cov_x)
+            if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
             Q = 0;
             for l=1:gpfaObj.L
                 tau = gpfaObj.taus(l);
@@ -378,6 +396,7 @@ classdef GPFA
         end
         
         function [dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, mu_x, cov_x)
+            if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
             dQ_dlogtau2 = zeros(size(gpfaObj.taus));
             dQ_dlogrho2 = zeros(size(gpfaObj.taus));
             dt2 = (gpfaObj.times - gpfaObj.times').^2;
@@ -408,6 +427,7 @@ classdef GPFA
         end
         
         function dQ_dlogtauf2 = stimScaleDeriv(gpfaObj, mu_f, sigma_f)
+            if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
             dQ_dlogtauf2 = zeros(size(gpfaObj.tauf));
             for k=gpfaObj.nGP:-1:1
                 dK_dlogtau2f = gpfaObj.Kf{k} .* gpfaObj.ss2{k} / gpfaObj.tauf(k)^2;
@@ -540,6 +560,8 @@ classdef GPFA
             if ~isempty(gpfaObj.Sf)
                 gpfaObj = updateKernelF(gpfaObj);
             end
+            
+            gpfaObj.initialized = true;
         end
     end
     
@@ -555,14 +577,9 @@ classdef GPFA
         end
         
         function gpfaObj = loadobj(gpfaObj)
-            holdGPU = gpfaObj.useGPU;
+            % Sanity-check and backwards compatibility (see @saveobj)
+            gpfaObj.initialized = false;
             gpfaObj.useGPU = false;
-            % updateAll() fails if gpfaObj.useGPU was true when saved but this machine doesn't
-            % support CUDA. setFields() handles it more gracefully, just printing a warning.
-            gpfaObj = gpfaObj.updateAll();
-            warning backtrace off;
-            gpfaObj = gpfaObj.setFields('useGPU', holdGPU);
-            warning backtrace on;
         end
     end
 end

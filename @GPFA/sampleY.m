@@ -1,5 +1,7 @@
 function [Y] = sampleY(gpfaObj, nSamples, mu_x, sigma_x, mu_f, sigma_f)
 
+if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
+
 if isempty(gpfaObj.Sf)
     if ~exist('mu_x', 'var')
         [mu_x, sigma_x] = gpfaObj.inferX();

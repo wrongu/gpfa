@@ -1,6 +1,8 @@
 function [mu_x, sigma_x] = inferX(gpfaObj, queryTimes)
 
 assert(isempty(gpfaObj.Sf), 'Sf must be empty to infer X alone, otherwise use GPFA.inferMeanFieldXF');
+            
+if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
 
 if ~exist('queryTimes', 'var') || isempty(queryTimes), queryTimes = gpfaObj.times; end
 

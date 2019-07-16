@@ -1,6 +1,8 @@
 function [Yhat, x, f] = simulate(gpfaObj, x, f)
 %GPFA.SIMULATE generate data sampled from the prior. Result is [T x N] matrix of Y data.
 
+if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
+
 if gpfaObj.L > 0
     % Draw values of x from the prior
     if ~exist('x', 'var') || isempty(x)

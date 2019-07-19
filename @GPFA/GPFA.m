@@ -393,6 +393,7 @@ classdef GPFA
                 Q = Q - 1/2*(mu_x(:,l)'*Kli*mu_x(:,l) + tracedot(cov_x{l}, Kli) + logdet(2*pi*Kl)) ...
                     + log_prior_rho + log_prior_tau; %#ok<MINV>
             end
+            Q = double(gather(Q));
         end
         
         function [dQ_dlogtau2, dQ_dlogrho2] = timescaleDeriv(gpfaObj, mu_x, cov_x)

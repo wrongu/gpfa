@@ -174,7 +174,7 @@ classdef GPFA
             %% Default kernel parameters
             
             if isempty(gpfaObj.dt)
-                effectiveDt = mean(diff(gpfaObj.times));
+                effectiveDt = nanmean(diff(gpfaObj.times));
             else
                 effectiveDt = gpfaObj.dt;
                 gpfaObj.times = (1:gpfaObj.T) * gpfaObj.dt;
@@ -302,8 +302,12 @@ classdef GPFA
             % Remove large fields that can be reconstructed after re-loading, and indicate this by
             % setting the 'initialized' flag to false. Also, flag 'useGPU' as false since data may
             % be saved from a CUDA-enabled machine and loaded from a CPU-only machine
-            gpfaObj.initialized = false;
+            gpfaObj = gpfaObj.clearMatrices();
             gpfaObj.useGPU = false;
+        end
+        
+        function gpfaObj = clearMatrices(gpfaObj)
+            gpfaObj.initialized = false;
             gpfaObj.K = {};
             gpfaObj.Gamma = {};
             gpfaObj.Cov = {};

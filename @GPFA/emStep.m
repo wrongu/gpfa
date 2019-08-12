@@ -16,6 +16,8 @@ else
     stim_predict = 0;
 end
 
+missing_data = isnan(gpfaObj.Y);
+
 %% E-Step
 
 if isempty(gpfaObj.Sf)
@@ -82,7 +84,7 @@ end
 
 if ~any(strcmp('C', gpfaObj.fixed)) && gpfaObj.L > 0
     residual = Y - b' - stim_predict;
-    residual(isnan(residual)) = 0;
+    residual(missing_data) = 0;
     C = (residual' * mu_x) / e_xx_inner;
     xC = mu_x * C';
 end
@@ -95,14 +97,14 @@ if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
             residual = residual - mu_f{k}(gpfaObj.Sf_ord{k}, :);
         end
     end
-    residual(isnan(residual)) = 0;
+    residual(missing_data) = 0;
     D = residual' * gpfaObj.S / (gpfaObj.S' * gpfaObj.S);
     stim_predict = stim_predict + gpfaObj.S * D';
 end
 
 if ~any(strcmp('R', gpfaObj.fixed))
     residual = (Y - b' - xC - stim_predict);
-    residual(isnan(residual)) = 0;
+    residual(missing_data) = 0;
     if gpfaObj.L > 0
         cov_y_x = C * diag(variances) * C' / T;
     else
@@ -112,9 +114,12 @@ if ~any(strcmp('R', gpfaObj.fixed))
         cov_y_f = 0;
     else
         cov_y_f = zeros(gpfaObj.N);
+        T_per_unit = sum(~missing_data, 1);
         for k=1:gpfaObj.nGP
-            var_y_f = cellfun(@(sig_f) dot(gpfaObj.Ns{k}, diag(sig_f)), sigma_f{k});
-            cov_y_f = diag(var_y_f) / T;
+            for n=1:gpfaObj.N
+                var_y_f_n = gpfaObj.Ns{k}(n, :) * diag(sigma_f{k}{n});
+                cov_y_f(n, n) = cov_y_f(n, n) + var_y_f_n ./ T_per_unit(n);
+            end
         end
     end
     R = diag((residual' * residual) / T + cov_y_x + cov_y_f);
@@ -161,7 +166,7 @@ if ~isempty(gpfaObj.Sf)
     Qf = 0;
     Hf = 0;
     for k=gpfaObj.nGP:-1:1
-        S = length(gpfaObj.Ns{k});
+        S = size(gpfaObj.Ns{k}, 2);
         logdetK = logdet(gpfaObj.Kf{k});
         e_ff_kn = cell(gpfaObj.nGP, gpfaObj.N);
         for n=gpfaObj.N:-1:1
@@ -179,7 +184,7 @@ end
 
 if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 1
     warning('Learning of ''signs'' not stable yet. Skipping.');
-    % dimf = length(gpfaObj.Ns);
+    % dimf = size(gpfaObj.Ns, 2);
     % for n=1:gpfaObj.N
     %     gamma_n = 1/(dimf+1)*(log(trace(gpfaObj.Kf \ e_ff_n{n})) - log(dimf) - logdetK);
     %     gpfaObj.signs(n) = exp(gamma_n / 2);

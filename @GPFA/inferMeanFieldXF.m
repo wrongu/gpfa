@@ -13,6 +13,8 @@ for k=gpfaObj.nGP:-1:1
     if gpfaObj.forceZeroF(k)
         % Ensure there is a zero point queried
         augmentedQueryStims{k} = unique(vertcat(queryStims{k}, zeros(1, size(gpfaObj.Sf{k}, 2))), 'rows');
+    else
+        augmentedQueryStims{k} = unique(queryStims{k}, 'rows');
     end
 end
 
@@ -64,12 +66,12 @@ for k=gpfaObj.nGP:-1:1
         % Compute sigma_f using standard method
         for n=N:-1:1
             K = gpfaObj.signs(k,n)^2 * gpfaObj.Kf{k};
-            G = spdiag(gpfaObj.Ns{k}) / gpfaObj.R(n);
+            G = spdiag(gpfaObj.Ns{k}(n,:)) / gpfaObj.R(n);
             
             % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
             sigma_f{k}{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
         end
-        newF(k) = length(gpfaObj.Ns{k});
+        newF(k) = size(gpfaObj.Ns{k}, 2);
         
         if gpfaObj.forceZeroF(k)
             idxZeroStim(k) = find(all(gpfaObj.uSf{k} == 0, 2));
@@ -94,7 +96,7 @@ for k=gpfaObj.nGP:-1:1
         % Compute sigma_f using 'padded' Gammas
         for n=N:-1:1
             K = gpfaObj.signs(k,n)^2 * Kf;
-            G = padarray(spdiag(gpfaObj.Ns{k}) / gpfaObj.R(n), [nStimPad(k) nStimPad(k)], 0, 'post');
+            G = padarray(spdiag(gpfaObj.Ns{k}(n,:)) / gpfaObj.R(n), [nStimPad(k) nStimPad(k)], 0, 'post');
             
             % The following is equivalent to inv(inv(K) + G) but doesn't require taking inv(K) directly
             sigma_f{k}{n} = K - K * G * ((eye(size(K)) + K * G) \ K);
@@ -113,7 +115,7 @@ residual = gpfaObj.Y - gpfaObj.b';
 if ~isempty(gpfaObj.S)
     residual = residual - gpfaObj.S * gpfaObj.D';
 end
-residual(isnan(residual)) = 0;
+missing_data = isnan(residual);
 
     function mu_x = updateX(mu_f, last_mu_x)
         residualF = residual;
@@ -123,6 +125,7 @@ residual(isnan(residual)) = 0;
             % Subtract of all prediction from kth stimulus tuning term
             residualF = residualF - mu_f_expanded;
         end
+        residualF(missing_data) = 0;
         
         % Pad zeros onto residuals for inference over 'query' time points
         residualF = vertcat(residualF, zeros(nTimePad, gpfaObj.N));
@@ -155,6 +158,7 @@ residual(isnan(residual)) = 0;
         else
             residual_with_x = residual;
         end
+        residual_with_x(missing_data) = 0;
         
         % Get prediction for *each* GP stimulus term, to be updated iteratively below.
         mu_f = last_mu_f;
@@ -169,8 +173,8 @@ residual(isnan(residual)) = 0;
         if gpfaObj.nGP == 1
             % Currently 'residual' is [T x N] but we need [S x N] version where each row is the sum
             % of all trials (T) where the stimulus had a particular value (S)
-            residualS = zeros(length(gpfaObj.Ns{1}), N);
-            for iStim=1:length(gpfaObj.Ns{1})
+            residualS = zeros(size(gpfaObj.Ns{1}, 2), N);
+            for iStim=1:size(gpfaObj.Ns{1}, 2)
                 residualS(iStim, :) = sum(residual_with_x(gpfaObj.Sf_ord{1} == iStim, :), 1);
             end
             residualS = residualS ./ gpfaObj.R';
@@ -191,8 +195,8 @@ residual(isnan(residual)) = 0;
                     full_residual = residual_with_x - pred_k_other;
                     % Currently 'residual' is [T x N] but we need [S x N] version where each row is the
                     % sum of all trials (T) where the stimulus had a particular value (S)
-                    residualS = zeros(length(gpfaObj.Ns{kk}), N);
-                    for iStim=1:length(gpfaObj.Ns{kk})
+                    residualS = zeros(size(gpfaObj.Ns{kk}, 2), N);
+                    for iStim=1:size(gpfaObj.Ns{kk}, 2)
                         residualS(iStim, :) = sum(full_residual(gpfaObj.Sf_ord{kk} == iStim, :), 1);
                     end
                     residualS = residualS ./ gpfaObj.R';

@@ -6,53 +6,6 @@ stimsB = norminv(linspace(.1, .9, Mf));
 stims = unique([stimsA(:) zeros(Mf, 1); 0 0; zeros(Mf, 1) stimsB(:)], 'rows');
 ns = size(stims, 1);
 
-iTaskA = all(stims == 0, 2) | stims(:, 1) ~= 0;
-iTaskB = all(stims == 0, 2) | stims(:, 2) ~= 0;
-
-% Construct the GP covariance kernel
-ss = zeros(ns);
-for i=1:size(stims,1)
-    for j=1:size(stims,1)
-        ss(i,j) = twoTaskDistFun(stims(i,:), stims(j,:));
-    end
-end
-kernel = exp(-ss.^2);
-kernel = GPFA.fixImpossiblePairwiseCorrelations(kernel);
-
-% subplot(2,2,1);
-% imagesc(ss);
-% axis image;
-% title('distances');
-% 
-% kernel1 = exp(-ss.^2);
-% subplot(2,2,2);
-% imagesc(kernel1);
-% axis image;
-% title('naive covariance');
-% 
-% kernel2 = GPFA.fixImpossiblePairwiseCorrelations(kernel1, 0);
-% subplot(2,2,3);
-% imagesc(kernel2);
-% axis image;
-% title('fixed covariance');
-% 
-% kernel3 = GPFA.fixImpossiblePairwiseCorrelations(kernel1, 1);
-% subplot(2,2,4);
-% imagesc(kernel3);
-% axis image;
-% title('doubly fixed covariance');
-% 
-% f1 = real(sqrtm(kernel1+eye(ns)/1000) * randn(ns, 1));
-% f2 = real(sqrtm(kernel2+eye(ns)/1000) * randn(ns, 1));
-% f3 = real(sqrtm(kernel3+eye(ns)/1000) * randn(ns, 1));
-% figure; hold on;
-% plot(stims(iTaskA, 1), f1(iTaskA), '-ob');
-% plot(stims(iTaskB, 2), f1(iTaskB), '--ob');
-% plot(stims(iTaskA, 1), f2(iTaskA), '-or');
-% plot(stims(iTaskB, 2), f2(iTaskB), '--or');
-% plot(stims(iTaskA, 1), f3(iTaskA), '-og');
-% plot(stims(iTaskB, 2), f3(iTaskB), '--og');
-
 %% Generate ground truth data
 
 N = 3;
@@ -100,8 +53,9 @@ gpfa = GPFA(fakeData, L, 'dt', 1, 'R', R, 'taus', taus, 'sigs', sigs, 'rhos', rh
 disp('generate');
 % Note - we need to pass 'fTrue' in as an argument since kernelF is near-singular so samples from it
 % are unstable
-[simData, xTrue, fTrue] = gpfa.simulate([], fTrue);
+[simData, xTrue, fTrue] = gpfa.simulate([], {fTrue});
 gpfa = gpfa.setFields('Y', simData);
+fTrue = fTrue{1};
 
 figure;
 subplot(2,1,1);
@@ -111,7 +65,7 @@ ylabel('neurons');
 title('data');
 colorbar;
 
-stim_pred = fTrue(gpfa.Sf_ord, :) + b';
+stim_pred = fTrue(gpfa.Sf_ord{1}, :) + b';
 residuals = simData - stim_pred;
 subplot(2,1,2);
 imagesc(residuals');
@@ -148,14 +102,14 @@ colorbar;
 
 subplot(3,1,3); hold on;
 colors = lines(N);
-iZero = find(all(gpfa.uSf == 0, 2));
-iTaskA = unique([find(gpfa.uSf(:,1) ~= 0); iZero]);
-iTaskB = unique([find(gpfa.uSf(:,2) ~= 0); iZero]);
+iZero = find(all(gpfa.uSf{1} == 0, 2));
+iTaskA = unique([find(gpfa.uSf{1}(:,1) ~= 0); iZero]);
+iTaskB = unique([find(gpfa.uSf{1}(:,2) ~= 0); iZero]);
 for n=1:N
-    plot(gpfa.uSf(iTaskA, 1), fTrue(iTaskA, n), 'LineWidth', 2, 'Color', colors(n, :));
-    plot(gpfa.uSf(iTaskB, 2), fTrue(iTaskB, n), 'LineWidth', 2, 'Color', colors(n, :));
-    errorbar(gpfa.uSf(iTaskA, 1), gpfa.b(n) + mu_f(iTaskA, n), sqrt(diag(sigma_f{n}(iTaskA, iTaskA))), 'Color', colors(n, :));
-    errorbar(gpfa.uSf(iTaskB, 2), gpfa.b(n) + mu_f(iTaskB, n), sqrt(diag(sigma_f{n}(iTaskB, iTaskB))), 'Color', colors(n, :));
+    plot(gpfa.uSf{1}(iTaskA, 1), fTrue(iTaskA, n), 'LineWidth', 2, 'Color', colors(n, :));
+    plot(gpfa.uSf{1}(iTaskB, 2), fTrue(iTaskB, n), 'LineWidth', 2, 'Color', colors(n, :));
+    errorbar(gpfa.uSf{1}(iTaskA, 1), gpfa.b(n) + mu_f{1}(iTaskA, n), sqrt(diag(sigma_f{1}{n}(iTaskA, iTaskA))), 'Color', colors(n, :));
+    errorbar(gpfa.uSf{1}(iTaskB, 2), gpfa.b(n) + mu_f{1}(iTaskB, n), sqrt(diag(sigma_f{1}{n}(iTaskB, iTaskB))), 'Color', colors(n, :));
 end
 
 %% Test inference at 'queried' points
@@ -166,7 +120,7 @@ queryF = stims;
 queryZero = all(queryF == 0, 2);
 queryA = queryF(:,1) ~= 0 | queryZero;
 queryB = queryF(:,2) ~= 0 | queryZero;
-[mu_x_q, sigma_x_q, mu_f_q, sigma_f_q] = gpfa.inferMeanFieldXF(queryTimes, queryF);
+[mu_x_q, sigma_x_q, mu_f_q, sigma_f_q] = gpfa.inferMeanFieldXF(queryTimes, {queryF});
 
 figure;
 subplot(2,1,1);
@@ -184,10 +138,10 @@ subplot(2,1,2);
 hold on;
 colors = lines(N);
 for n=1:N
-    plot(gpfa.uSf(iTaskA, 1), fTrue(iTaskA, n), 'LineWidth', 2, 'Color', colors(n, :));
-    plot(gpfa.uSf(iTaskB, 2), fTrue(iTaskB, n), 'LineWidth', 2, 'Color', colors(n, :));
-    errorbar(gpfa.uSf(iTaskA, 1), gpfa.b(n) + mu_f_q(iTaskA, n), sqrt(diag(sigma_f_q{n}(iTaskA, iTaskA))), 'Color', colors(n, :));
-    errorbar(gpfa.uSf(iTaskB, 2), gpfa.b(n) + mu_f_q(iTaskB, n), sqrt(diag(sigma_f_q{n}(iTaskB, iTaskB))), 'Color', colors(n, :));
+    plot(gpfa.uSf{1}(iTaskA, 1), fTrue(iTaskA, n), 'LineWidth', 2, 'Color', colors(n, :));
+    plot(gpfa.uSf{1}(iTaskB, 2), fTrue(iTaskB, n), 'LineWidth', 2, 'Color', colors(n, :));
+    errorbar(gpfa.uSf{1}(iTaskA, 1), gpfa.b(n) + mu_f_q{1}(iTaskA, n), sqrt(diag(sigma_f_q{1}{n}(iTaskA, iTaskA))), 'Color', colors(n, :));
+    errorbar(gpfa.uSf{1}(iTaskB, 2), gpfa.b(n) + mu_f_q{1}(iTaskB, n), sqrt(diag(sigma_f_q{1}{n}(iTaskB, iTaskB))), 'Color', colors(n, :));
 end
 axis tight;
 
@@ -253,10 +207,10 @@ colorbar;
 subplot(3,1,3); hold on;
 colors = lines(N);
 for n=1:N
-    plot(gpfa.uSf(iTaskA, 1), fTrue(iTaskA, n), 'LineWidth', 2, 'Color', colors(n, :));
-    plot(gpfa.uSf(iTaskB, 2), fTrue(iTaskB, n), 'LineWidth', 2, 'Color', colors(n, :));
-    errorbar(gpfa.uSf(iTaskA, 1), gpfa.b(n) + mu_f_fit(iTaskA, n), sqrt(diag(sigma_f_fit{n}(iTaskA, iTaskA))), 'Color', colors(n, :));
-    errorbar(gpfa.uSf(iTaskB, 2), gpfa.b(n) + mu_f_fit(iTaskB, n), sqrt(diag(sigma_f_fit{n}(iTaskB, iTaskB))), 'Color', colors(n, :));
+    plot(gpfa.uSf{1}(iTaskA, 1), fTrue(iTaskA, n), 'LineWidth', 2, 'Color', colors(n, :));
+    plot(gpfa.uSf{1}(iTaskB, 2), fTrue(iTaskB, n), 'LineWidth', 2, 'Color', colors(n, :));
+    errorbar(gpfa.uSf{1}(iTaskA, 1), gpfa.b(n) + mu_f_fit{1}(iTaskA, n), sqrt(diag(sigma_f_fit{1}{n}(iTaskA, iTaskA))), 'Color', colors(n, :));
+    errorbar(gpfa.uSf{1}(iTaskB, 2), gpfa.b(n) + mu_f_fit{1}(iTaskB, n), sqrt(diag(sigma_f_fit{1}{n}(iTaskB, iTaskB))), 'Color', colors(n, :));
 end
 title('tuning curves estimated with fitted model');
 

@@ -45,7 +45,7 @@ classdef GPFA
         %% --- Useful things for stimulus GP tuning ---
         uSf    % Unique values of Sf, per row (cell array, 1 per each stimulus k)
         Sf_ord % Ordinal values for GP stimuli Sf, usable as indices into Ns and Kf. Hence Sf=uSf(Sf_ord,:) (cell array, 1 per each stimulus k)
-        Ns     % Ns(i) contains the number of trials where stimulus i appeared, corresponding to unique values of Sf_ord (cell array, 1 per each stimulus k)
+        Ns     % [N x Mf], Ns(n,i) contains the number of trials where stimulus i appeared for neuron n, corresponding to unique values of Sf_ord (cell array, 1 per each stimulus k)
         Kf     % Precomputed GP Kernel for stimulus tuning (cell array, 1 per each stimulus k)
         ss2    % Squared pairwise distance function between stimuli (cell array, 1 per each stimulus k)
         nGP    % Number of GP tuning functions per neuron (i.e. number of independent stimulus dimensions)
@@ -127,6 +127,9 @@ classdef GPFA
             if isempty(gpfaObj.L)
                 error('Not enough inputs - L is a required argument');
             end
+            
+            % Up front, compute mask of where 'missing' data are
+            missing_data = isnan(gpfaObj.Y);
             
             %% Store and check matrix size consistency
             if isempty(gpfaObj.T), gpfaObj.T = size(gpfaObj.Y, 1); end
@@ -232,10 +235,10 @@ classdef GPFA
                     end
                     
                     ss = zeros(dim_f, dim_f);
-                    gpfaObj.Ns{k} = zeros(dim_f, 1);
+                    gpfaObj.Ns{k} = zeros(gpfaObj.N, dim_f);
                     for iStim=1:dim_f
                         matches = all(gpfaObj.Sf{k} == gpfaObj.uSf{k}(iStim, :), 2);
-                        gpfaObj.Ns{k}(iStim) = sum(matches);
+                        gpfaObj.Ns{k}(:, iStim) = sum(matches & ~missing_data, 1)';
                         
                         for jStim=1:dim_f
                             ss(iStim, jStim) = gpfaObj.stim_dist_fun{k}(gpfaObj.uSf{k}(iStim, :), gpfaObj.uSf{k}(jStim, :));

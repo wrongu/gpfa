@@ -31,7 +31,7 @@ classdef GPFA
         forceZeroF % scalar logical or [1 x K] logical array: whether to force f(0)=0 for each stimulus dimension
         %% --- EM settings ---
         kernel_update_freq % how often (number of iterations) to update the kernel parameters
-        fixed % cell array of fixed parameter names
+        fixed % Cell array of fixed parameter names. May specify sub indices, for instance 'C(:,1:5)' would specify that the first 5 latent loadings are fixed.
         lr    % learning rate for gradient-based updates
         lr_decay  % half-life of learning rate for simulated annealing
         useGPU % flag indicating whether to use GPU accelration on matrix operations
@@ -260,7 +260,8 @@ classdef GPFA
             if isempty(gpfaObj.lr_decay), gpfaObj.lr_decay = 100; end
             if isempty(gpfaObj.kernel_update_freq), gpfaObj.kernel_update_freq = 1; end
             if isempty(gpfaObj.useGPU), gpfaObj.useGPU = false; end
-
+            
+            gpfaObj.fixed = sort(gpfaObj.fixed);
 
             % Verify that GPU is available if selected
             if gpfaObj.useGPU
@@ -570,6 +571,58 @@ classdef GPFA
             end
             
             gpfaObj.initialized = true;
+        end
+        
+        function [newValue, updateMask] = getNewValueHandleConstraints(gpfaObj, paramName, setValue)
+            %GPFA.GETNEWVALUEHANDLEFIXED without actually setting the value, find what the new value
+            %of a field would be if we tried to set it, taking into account all constraints
+            %specified in 'gpfaObj.fixed'. Possible future optimization: cache results.
+            oldValue = gpfaObj.(paramName);
+            newValue = setValue;
+            isConstrained = any(cellfun(@(fixedstring) startsWith(fixedstring, paramName), gpfaObj.fixed));
+            
+            updateMask = true(size(oldValue));
+
+            if isConstrained
+                for iConstraint=1:length(gpfaObj.fixed)
+                    % If the constraint is an entire parameter like 'b', then 'parts' will be a cell
+                    % array containing only {'b'}. If it has subscripts, like 'b(1)', then 'parts'
+                    % will contain two entries, {'b', '1)'}
+                    parts = strsplit(gpfaObj.fixed{iConstraint}, '(');
+                    if strcmp(paramName, parts{1})
+                        % Apply this constraint
+                        if length(parts) == 1
+                            % Simple constraint on the entire parameter. Can break after.
+                            newValue = oldValue;
+                            return
+                        else
+                            % Subscripted constraint. Apply matlab subscripting operations
+                            
+                            % Get the '...' out of 'b(...)'
+                            insideParens = parts{2}(1:end-1);
+                            
+                            % Split by commas and strip whitespace. '(1, 2:3, :)' becomes {'1',
+                            % '2:3', ':'}
+                            subscripts = cellfun(@(substr) strip(substr), strsplit(insideParens, ','), ...
+                                'UniformOutput', false);
+                            
+                            % Leave ':' intact but evaluate numeric indices
+                            for i=1:length(subscripts)
+                                if ~strcmp(subscripts{i}, ':')
+                                    subscripts{i} = str2num(subscripts{i}); %#ok
+                                end
+                            end
+                            
+                            % Set update mask to false wherever indices of 'fixed' values are
+                            % specified
+                            substruct = struct('type', '()', 'subs', {subscripts});
+                            updateMask = subsasgn(updateMask, substruct, false);
+                        end
+                    end
+                end
+                
+                newValue(~updateMask) = oldValue(~updateMask);
+            end
         end
     end
     

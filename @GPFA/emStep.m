@@ -80,12 +80,14 @@ end
 if ~any(strcmp('b', gpfaObj.fixed))
     residual = Y - xC - stim_predict;
     b = nanmean(residual, 1)';
+    b = gpfaObj.getNewValueHandleConstraints('b', b);
 end
 
 if ~any(strcmp('C', gpfaObj.fixed)) && gpfaObj.L > 0
     residual = Y - b' - stim_predict;
     residual(missing_data) = 0;
     C = (residual' * mu_x) / e_xx_inner;
+    C = gpfaObj.getNewValueHandleConstraints('C', C);
     xC = mu_x * C';
 end
 
@@ -99,6 +101,7 @@ if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
     end
     residual(missing_data) = 0;
     D = residual' * gpfaObj.S / (gpfaObj.S' * gpfaObj.S);
+    D = gpfaObj.getNewValueHandleConstraints('D', D);
     stim_predict = stim_predict + gpfaObj.S * D';
 end
 
@@ -124,10 +127,13 @@ if ~any(strcmp('R', gpfaObj.fixed))
     end
     R = diag((residual' * residual) / T + cov_y_x + cov_y_f);
     R = max(R, 1e-6);
+    R = gpfaObj.getNewValueHandleConstraints('R', R);
 end
 
 update_tau = ~any(strcmp('taus', gpfaObj.fixed));
 update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
+[~, tau_update_mask] = gpfaObj.getNewValueHandleConstraints('taus', []);
+[~, rho_update_mask] = gpfaObj.getNewValueHandleConstraints('rhos', []);
 
     function [nQt, gradNegQt] = negQt(logtau2_logrho2)
         inner_logtau2s = logtau2_logrho2(1, :);
@@ -135,20 +141,17 @@ update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
         
         tmpObj = gpfaObj;
         
-        if ~any(strcmp('taus', gpfaObj.fixed))
-            tmpObj.taus = exp(inner_logtau2s / 2);
-        end
-        
-        if ~any(strcmp('rhos', gpfaObj.fixed))
-            tmpObj.rhos = exp(inner_logrho2s / 2);
-        end
+        % Update values of 'rhos' and 'taus' but only where they aren't constrained
+        tmpObj.taus(tau_update_mask) = exp(inner_logtau2s(tau_update_mask) / 2);
+        tmpObj.rhos(rho_update_mask) = exp(inner_logrho2s(rho_update_mask) / 2);
         
         tmpObj = tmpObj.updateK();
         
         nQt = double(-tmpObj.timescaleQ(mu_x, sigma_x));
         [dQ_dlogtau2, dQ_dlogrho2] = tmpObj.timescaleDeriv(mu_x, sigma_x);
         
-        gradNegQt = double(vertcat(-dQ_dlogtau2 * update_tau, -dQ_dlogrho2 * update_rho));
+        % Concatenate gradients, setting gradient to zero if a constraint is active
+        gradNegQt = double(vertcat(-dQ_dlogtau2 .* tau_update_mask, -dQ_dlogrho2 .* rho_update_mask));
     end
 
 if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 1
@@ -158,8 +161,8 @@ if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 1
     logrho2s = 2*log(gpfaObj.rhos);
     [newLogTau2LogRho2, ~] = fminunc(@negQt, vertcat(logtau2s, logrho2s), opts);
     
-    gpfaObj.taus = exp(newLogTau2LogRho2(1, :) / 2);
-    gpfaObj.rhos = exp(newLogTau2LogRho2(2, :) / 2);
+    gpfaObj.taus(tau_update_mask) = exp(newLogTau2LogRho2(1, tau_update_mask) / 2);
+    gpfaObj.rhos(rho_update_mask) = exp(newLogTau2LogRho2(2, rho_update_mask) / 2);
 end
 
 if ~isempty(gpfaObj.Sf)
@@ -185,10 +188,10 @@ end
 if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 1
     warning('Learning of ''signs'' not stable yet. Skipping.');
     % dimf = size(gpfaObj.Ns, 2);
-    % for n=1:gpfaObj.N
-    %     gamma_n = 1/(dimf+1)*(log(trace(gpfaObj.Kf \ e_ff_n{n})) - log(dimf) - logdetK);
-    %     gpfaObj.signs(n) = exp(gamma_n / 2);
+    % for n=gpfaObj.N:-1:1
+    %     gamma_n(n) = 1/(dimf+1)*(log(trace(gpfaObj.Kf \ e_ff_n{n})) - log(dimf) - logdetK);
     % end
+    % gpfaObj.signs = gpfaObj.getNewValueHandleConstraints('signs', exp(gamma_n / 2));
 end
 
     function [nQf, gradNegQf] = negQf(logtauf2)
@@ -210,7 +213,7 @@ if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed)) && mod(itr, gpfaO
         'Display', 'none');
     [newLogTauf, newNegQf] = fminunc(@negQf, 2*log(gpfaObj.tauf), opts);
     assert(-newNegQf >= Qf, 'tauf optimization failed!');
-    gpfaObj.tauf = exp(newLogTauf / 2);
+    gpfaObj.tauf = gpfaObj.getNewValueHandleConstraints('tauf', exp(newLogTauf / 2));
 end
 
 gpfaObj.b = b;
@@ -225,8 +228,4 @@ gpfaObj = gpfaObj.updateAll();
 Q = gather(Q);
 H = gather(H);
 
-end
-
-function x = vec(x)
-x = x(:);
 end

@@ -144,7 +144,7 @@ missing_data = isnan(residual);
                     for l2=l_other
                         proj_x_other = proj_x_other + Gamma{l1, l2} * mu_x(:, l2);
                     end
-                    mu_x(:, l1) = gether(sigma_x{l1} * (residualF * RiC(:, l1) - proj_x_other));
+                    mu_x(:, l1) = gather(sigma_x{l1} * (residualF * RiC(:, l1) - proj_x_other));
                 end
             end
         else

@@ -193,6 +193,7 @@ missing_data = isnan(residual);
                     k_other = [1:kk-1 kk+1:gpfaObj.nGP];
                     pred_k_other = sum(cat(3, pred_f{k_other}), 3);
                     full_residual = residual_with_x - pred_k_other;
+                    full_residual(missing_data) = 0;
                     % Currently 'residual' is [T x N] but we need [S x N] version where each row is the
                     % sum of all trials (T) where the stimulus had a particular value (S)
                     residualS = zeros(size(gpfaObj.Ns{kk}, 2), N);

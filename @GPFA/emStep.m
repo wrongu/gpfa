@@ -37,7 +37,9 @@ end
 % Get the sum of the variances (covariance diagonals) of each latent
 variances = cellfun(@(sig) sum(diag(sig)), sigma_x);
 % Compute E[x'x] under the factorized posterior (zero covariance between latents by assumption)
-e_xx_inner = (mu_x' * mu_x) + diag(variances);
+if ~any(missing_data(:))
+    e_xx_inner = (mu_x' * mu_x) + diag(variances);
+end
 
 y_resid = Y - b' - stim_predict;
 y_resid(isnan(y_resid)) = 0;
@@ -85,8 +87,15 @@ end
 
 if ~any(strcmp('C', gpfaObj.fixed)) && gpfaObj.L > 0
     residual = Y - b' - stim_predict;
-    residual(missing_data) = 0;
-    C = (residual' * mu_x) / e_xx_inner;
+    if ~any(missing_data(:))
+        C = (residual' * mu_x) / e_xx_inner;
+    else
+        for n=1:gpfaObj.N
+            mask = ~missing_data(:, n);
+            miss_variances = cellfun(@(sig) mask'*diag(sig), sigma_x);
+            C(n, :) = (residual(mask, n)' * mu_x(mask, :)) / (mu_x(mask,:)'*mu_x(mask,:) + miss_variances);
+        end
+    end
     C = gpfaObj.getNewValueHandleConstraints('C', C);
     xC = mu_x * C';
 end

@@ -288,6 +288,12 @@ classdef GPFA
             end
         end
         
+        function gpfaObj = populate(gpfaObj)
+            if ~gpfaObj.initialized
+                gpfaObj = gpfaObj.updateAll();
+            end
+        end
+        
         %% Inference
         [mu_x, sigma_x] = inferX(gpfaObj, queryTimes)
         [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj, queryTimes, queryStims, maxIters, convTol)

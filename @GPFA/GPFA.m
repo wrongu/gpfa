@@ -298,6 +298,18 @@ classdef GPFA
         [mu_x, sigma_x] = inferX(gpfaObj, queryTimes)
         [mu_x, sigma_x, mu_f, sigma_f] = inferMeanFieldXF(gpfaObj, queryTimes, queryStims, maxIters, convTol)
         
+        function [fve, fve_per_unit] = fve(gpfaObj)
+            %GPFA.FVE fraction variance explained
+            per_unit_var = nanvar(gpfaObj.Y, [], 1);
+            resid = gpfaObj.Y - gpfaObj.predictY();
+            per_unit_resid_var = nanvar(resid, [], 1);
+            
+            per_unit_var_explained = per_unit_var - per_unit_resid_var;
+            fve_per_unit = per_unit_var_explained ./ per_unit_var;
+            
+            fve = mean(fve_per_unit);
+        end
+        
         %% Learning
         [gpfaObj, Q, H] = emStep(gpfaObj, itr)
         [bestFit, Qs, Hs, converged] = fitEM(gpfaObj, maxIters, convergenceTol, startIter)

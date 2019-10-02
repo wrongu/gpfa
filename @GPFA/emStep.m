@@ -1,4 +1,4 @@
-function [gpfaObj, Q, H] = emStep(gpfaObj, itr)
+function [gpfaObj, Q, H] = emStep(gpfaObj, itr, infer_tol)
 if ~gpfaObj.initialized, gpfaObj = gpfaObj.updateAll(); end
 
 R = gpfaObj.R;
@@ -23,9 +23,7 @@ missing_data = isnan(gpfaObj.Y);
 if isempty(gpfaObj.Sf)
     [mu_x, sigma_x] = gpfaObj.inferX();
 else
-    % Convergence tolerance for mu_x and mu_f gets more strict as iterations go on
-    tolerance = eps + 1e-3 * (1/2)^((itr-1) / gpfaObj.lr_decay);
-    [mu_x, sigma_x, mu_f, sigma_f] = gpfaObj.inferMeanFieldXF([], [], [], tolerance);
+    [mu_x, sigma_x, mu_f, sigma_f] = gpfaObj.inferMeanFieldXF([], [], [], infer_tol);
 end
 
 if ~isempty(gpfaObj.Sf)
@@ -34,15 +32,15 @@ if ~isempty(gpfaObj.Sf)
     end
 end
 
-% Get the sum of the variances (covariance diagonals) of each latent
-variances = cellfun(@(sig) sum(diag(sig)), sigma_x);
-% Compute E[x'x] under the factorized posterior (zero covariance between latents by assumption)
-if ~any(missing_data(:))
-    e_xx_inner = (mu_x' * mu_x) + diag(variances);
+% Get the sum of the variances (covariance diagonals) of each latent, separate per neuron
+% considering only where each neuron has data
+for n=gpfaObj.N:-1:1
+    mask = ~missing_data(:,n);
+    variances{n} = cellfun(@(sig) mask'*diag(sig), sigma_x);
 end
 
 y_resid = Y - b' - stim_predict;
-y_resid(isnan(y_resid)) = 0;
+y_resid(missing_data) = 0;
 y_resid_Ri = y_resid ./ R';
 
 logdet_R = sum(log(2*pi*R));
@@ -81,6 +79,7 @@ end
 
 if ~any(strcmp('b', gpfaObj.fixed))
     residual = Y - xC - stim_predict;
+    % Here, missing data appear as NaN values. Average over all non-missing values to estimate b.
     b = nanmean(residual, 1)';
     b = gpfaObj.getNewValueHandleConstraints('b', b);
 end
@@ -88,12 +87,15 @@ end
 if ~any(strcmp('C', gpfaObj.fixed)) && gpfaObj.L > 0
     residual = Y - b' - stim_predict;
     if ~any(missing_data(:))
+        % Compute E[x'x] under the factorized posterior (zero covariance between latents by assumption)
+        e_xx_inner = (mu_x' * mu_x) + diag(variances{1});
         C = (residual' * mu_x) / e_xx_inner;
     else
+        % Which 'x' matter depends on the neuron: for loadings C(:,n), only consider where neuron n
+        % has data.
         for n=1:gpfaObj.N
             mask = ~missing_data(:, n);
-            miss_variances = cellfun(@(sig) mask'*diag(sig), sigma_x);
-            C(n, :) = (residual(mask, n)' * mu_x(mask, :)) / (mu_x(mask,:)'*mu_x(mask,:) + miss_variances);
+            C(n, :) = (residual(mask, n)' * mu_x(mask, :)) / (mu_x(mask,:)'*mu_x(mask,:) + variances{n});
         end
     end
     C = gpfaObj.getNewValueHandleConstraints('C', C);
@@ -108,8 +110,16 @@ if ~any(strcmp('D', gpfaObj.fixed)) && ~isempty(gpfaObj.S)
             residual = residual - mu_f{k}(gpfaObj.Sf_ord{k}, :);
         end
     end
-    residual(missing_data) = 0;
-    D = residual' * gpfaObj.S / (gpfaObj.S' * gpfaObj.S);
+    if ~any(missing_data(:))
+        D = residual' * gpfaObj.S / (gpfaObj.S' * gpfaObj.S);
+    else
+        % Analogous to 'C' update, only consider trials of 'S' where neuron 'n' has data
+        for n=1:gpfaObj.N
+            mask = ~missing_data(:, n);
+            S_inner = gpfaObj.S(mask, :)' * gpfaObj.S(mask, :);
+            D(n, :) = residual(mask, n)' * gpfaObj.S(mask, :) / S_inner;
+        end
+    end
     D = gpfaObj.getNewValueHandleConstraints('D', D);
     stim_predict = stim_predict + gpfaObj.S * D';
 end
@@ -117,24 +127,30 @@ end
 if ~any(strcmp('R', gpfaObj.fixed))
     residual = (Y - b' - xC - stim_predict);
     residual(missing_data) = 0;
-    if gpfaObj.L > 0
-        cov_y_x = C * diag(variances) * C' / T;
-    else
-        cov_y_x = 0;
-    end
-    if isempty(gpfaObj.Sf)
-        cov_y_f = 0;
-    else
-        cov_y_f = zeros(gpfaObj.N);
-        T_per_unit = sum(~missing_data, 1);
-        for k=1:gpfaObj.nGP
-            for n=1:gpfaObj.N
+    T_per_unit = sum(~missing_data, 1);
+    for n=1:gpfaObj.N
+        % Get residual variance term due to uncertainty in latents
+        if gpfaObj.L > 0
+            cov_y_x = C * diag(variances{n}) * C' / T_per_unit(n);
+        else
+            cov_y_x = 0;
+        end
+        % Get residual variance term due to uncertainty in GP tuning
+        if isempty(gpfaObj.Sf)
+            cov_y_f = 0;
+        else
+            cov_y_f = 0;
+            for k=1:gpfaObj.nGP
+                % Note: Ns{k}(n,:) contains, for stimulus {k}, the number of times each stimulus
+                % value appeared on trials where neuron n has data
+                assert(sum(gpfaObj.Ns{k}(n, :)) == T_per_unit(n));
                 var_y_f_n = gpfaObj.Ns{k}(n, :) * diag(sigma_f{k}{n});
-                cov_y_f(n, n) = cov_y_f(n, n) + var_y_f_n ./ T_per_unit(n);
+                cov_y_f = cov_y_f + var_y_f_n ./ T_per_unit(n);
             end
         end
+        % Combine variances
+        R(n) = residual(:,n)' * residual(:,n) / T_per_unit(n) + cov_y_x + cov_y_f;
     end
-    R = diag((residual' * residual) / T + cov_y_x + cov_y_f);
     R = max(R, 1e-6);
     R = gpfaObj.getNewValueHandleConstraints('R', R);
 end
@@ -163,7 +179,7 @@ update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
         gradNegQt = double(vertcat(-dQ_dlogtau2 .* tau_update_mask, -dQ_dlogrho2 .* rho_update_mask));
     end
 
-if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 1
+if (update_tau || update_rho) && mod(itr, gpfaObj.kernel_update_freq) == 0
     opts = optimoptions('fminunc', 'Algorithm', 'trust-region', 'SpecifyObjectiveGradient', true, ...
         'Display', 'none');
     logtau2s = 2*log(gpfaObj.taus);
@@ -194,7 +210,7 @@ if ~isempty(gpfaObj.Sf)
     H = H + Hf;
 end
 
-if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 1
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('signs', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 0
     warning('Learning of ''signs'' not stable yet. Skipping.');
     % dimf = size(gpfaObj.Ns, 2);
     % for n=gpfaObj.N:-1:1
@@ -215,7 +231,7 @@ end
         gradNegQf = -tmpObj.stimScaleDeriv(mu_f, sigma_f);
     end
 
-if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 1
+if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed)) && mod(itr, gpfaObj.kernel_update_freq) == 0
     % In practice, gradient steps with learning rate 'lr' was found to be unstable for all parameter
     % regimes tested. fminunc is a bit slower but has better guarantees.
     opts = optimoptions('fminunc', 'Algorithm', 'trust-region', 'SpecifyObjectiveGradient', true, ...

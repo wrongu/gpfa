@@ -311,8 +311,8 @@ classdef GPFA
         end
         
         %% Learning
-        [gpfaObj, Q, H] = emStep(gpfaObj, itr)
-        [bestFit, Qs, Hs, converged] = fitEM(gpfaObj, maxIters, convergenceTol, startIter)
+        [gpfaObj, Q, H] = emStep(gpfaObj, itr, infer_tol)
+        [bestFit, Qs, Hs, FVEs, converged] = fitEM(gpfaObj, maxIters, convergenceTol, startIter)
         
         %% Simulation / Generate Data
         [Yhat, x, f] = simulate(gpfaObj, x, f)

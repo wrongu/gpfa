@@ -137,7 +137,8 @@ missing_data = isnan(residual);
             mu_x = last_mu_x;
             % Explaining-away across xs must be handled iteratively due to factorized posterior
             % approximation
-            for xitr=1:10
+            delta_x = inf;
+            while delta_x / numel(mu_x) > convTol
                 for l1=1:L
                     l_other = [1:l1-1 l1+1:L];
                     proj_x_other = zeros(newT, 1);
@@ -146,6 +147,8 @@ missing_data = isnan(residual);
                     end
                     mu_x(:, l1) = gather(sigma_x{l1} * (residualF * RiC(:, l1) - proj_x_other));
                 end
+                delta_x = max(abs(mu_x - last_mu_x));
+                last_mu_x = mu_x;
             end
         else
             mu_x = gather(sigma_x{1} * residualF * RiC);
@@ -188,7 +191,9 @@ missing_data = isnan(residual);
                 mu_f{1} = mu_f{1} - mu_f{1}(idxZeroStim, :);
             end
         else
-            for fitr=1:5
+            delta_f = inf;
+            last_mu_f = cellcat(last_mu_f);
+            while delta_f / numel(last_mu_f) > convTol
                 for kk=1:gpfaObj.nGP
                     k_other = [1:kk-1 kk+1:gpfaObj.nGP];
                     pred_k_other = sum(cat(3, pred_f{k_other}), 3);
@@ -211,6 +216,8 @@ missing_data = isnan(residual);
                         mu_f{kk} = mu_f{kk} - mu_f{kk}(idxZeroStim(kk), :);
                     end
                 end
+                delta_f = max(abs(cellcat(mu_f) - last_mu_f));
+                last_mu_f = cellcat(mu_f);
             end
         end
     end

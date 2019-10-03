@@ -95,7 +95,7 @@ if ~any(strcmp('C', gpfaObj.fixed)) && gpfaObj.L > 0
         % has data.
         for n=1:gpfaObj.N
             mask = ~missing_data(:, n);
-            C(n, :) = (residual(mask, n)' * mu_x(mask, :)) / (mu_x(mask,:)'*mu_x(mask,:) + variances{n});
+            C(n, :) = (residual(mask, n)' * mu_x(mask, :)) / (mu_x(mask,:)'*mu_x(mask,:) + diag(variances{n}));
         end
     end
     C = gpfaObj.getNewValueHandleConstraints('C', C);

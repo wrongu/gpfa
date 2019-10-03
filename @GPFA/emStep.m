@@ -149,7 +149,7 @@ if ~any(strcmp('R', gpfaObj.fixed))
             end
         end
         % Combine variances
-        R(n) = residual(:,n)' * residual(:,n) / T_per_unit(n) + cov_y_x + cov_y_f;
+        R(n) = residual(:,n)' * residual(:,n) / T_per_unit(n) + cov_y_x(n,n) + cov_y_f;
     end
     R = max(R, 1e-6);
     R = gpfaObj.getNewValueHandleConstraints('R', R);

@@ -107,7 +107,7 @@ if ~any(strcmp('R', gpfaObj.fixed))
         if gpfaObj.L > 0
             cov_y_x = C * diag(variances{n}) * C' / T_per_unit(n);
         else
-            cov_y_x = 0;
+            cov_y_x = zeros(gpfaObj.N);
         end
         % Get residual variance term due to uncertainty in GP tuning
         if isempty(gpfaObj.Sf)
@@ -129,8 +129,8 @@ if ~any(strcmp('R', gpfaObj.fixed))
     R = gpfaObj.getNewValueHandleConstraints('R', R);
 end
 
-update_tau = ~any(strcmp('taus', gpfaObj.fixed));
-update_rho = ~any(strcmp('rhos', gpfaObj.fixed));
+update_tau = ~any(strcmp('taus', gpfaObj.fixed)) && gpfaObj.L > 0;
+update_rho = ~any(strcmp('rhos', gpfaObj.fixed)) && gpfaObj.L > 0;
 [~, tau_update_mask] = gpfaObj.getNewValueHandleConstraints('taus', []);
 [~, rho_update_mask] = gpfaObj.getNewValueHandleConstraints('rhos', []);
 
@@ -201,8 +201,7 @@ if ~isempty(gpfaObj.Sf) && ~any(strcmp('tauf', gpfaObj.fixed)) && mod(itr, gpfaO
     % regimes tested. fminunc is a bit slower but has better guarantees.
     opts = optimoptions('fminunc', 'Algorithm', 'trust-region', 'SpecifyObjectiveGradient', true, ...
         'Display', 'none');
-    [newLogTauf, newNegQf] = fminunc(@negQf, 2*log(gpfaObj.tauf), opts);
-    assert(-newNegQf >= Qf, 'tauf optimization failed!');
+    [newLogTauf, ~] = fminunc(@negQf, 2*log(gpfaObj.tauf), opts);
     gpfaObj.tauf = gpfaObj.getNewValueHandleConstraints('tauf', exp(newLogTauf / 2));
 end
 

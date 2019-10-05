@@ -364,39 +364,51 @@ classdef GPFA
                 residuals = residuals - gpfaObj.S * gpfaObj.D';
             end
             
-            % Initialize latent loadings C using top L principal components of data after regressing
-            % out the stimulus and smoothing by kernels of each unique 'tau'
+            % Initialize latent loadings C by factor analysis
             if gpfaObj.L == 0
                 gpfaObj.C = [];
             elseif ~any(strcmp('C', gpfaObj.fixed))
-                if ~any(isnan(gpfaObj.Y(:)))
-                    avgTau = mean(gpfaObj.taus);
-                    kernel = exp(-0.5*(gpfaObj.times - gpfaObj.times').^2 / avgTau^2);
+                gpfaObj = gpfaObj.updateK();
+                if any(isnan(gpfaObj.Y(:)))
+                    % For initialization of loadings with missing data, impute missing values and
+                    % hope for the best.. Errors in this process will be corrected by fitEM() later.
+                    loading_residuals = impute(residuals);
+                else
+                    loading_residuals = residuals;
+                end
+                
+                [~, isrt] = sort(gpfaObj.taus, 'descend');
+                
+                initC = zeros(gpfaObj.N, gpfaObj.L);
+                for iTau=1:gpfaObj.L
+                    idx = isrt(iTau);
+                    tau = gpfaObj.taus(idx);
+                    kernel = exp(-0.5*(gpfaObj.times - gpfaObj.times').^2 / tau^2);
                     kernel = kernel ./ sum(kernel, 2);
                     % This dot product is [T x T] x [T x N]; it averages together data with a
                     % 'window' that depends on the kernel size and time points.
-                    dataSmooth = kernel * residuals;
-                    % Use top principal components of 'smoothed' data to initialize loadings at this
-                    % time-scale
+                    dataSmooth = kernel * loading_residuals;
+                    % Use top principal components of 'smoothed' data to initialize loadings
                     smoothCov = nancov(dataSmooth, 'pairwise');
-                    [gpfaObj.C, ~] = eigs(smoothCov, gpfaObj.L);
-                    % Scale the loadings to match the projected variance of the data
-                    variances = sum(gpfaObj.C .* (nancov(gpfaObj.Y) * gpfaObj.C), 1);
-                    variances(variances == 0) = 1;
-                    gpfaObj.C = gpfaObj.C .* sqrt(variances);
-                else
-                    % If there is missing data, the above smoothing method will likely fail.
-                    % Initialize loadings randomly.
-                    vars = nanvar(residuals, 1, 1);
-                    scale = mean(sqrt(vars));
-                    gpfaObj.C = scale * randn(gpfaObj.N, gpfaObj.L);
+                    [initC(:,idx), ~] = eigs(smoothCov, 1);
+                    % To continue to next iteration, first subtract off this component (note that
+                    % initC is currently a unit vector from eigs function)
+                    est_x = kernel * loading_residuals * initC(:,idx);
+                    loading_residuals = loading_residuals - est_x .* initC(:,idx)';
+                    % Scale the loadings so the inferred x will have variancenear the expected
+                    % sample variance at this timescale.
+                    covK = gpfaObj.K{idx};
+                    % Analytic sample variance, i.e. E[(x_t - <x>)^2/T]
+                    sample_variance_x = (sum(diag(covK))+(1/gpfaObj.T^2-1/gpfaObj.T)*sum(covK(:)))/gpfaObj.T;
+                    scale = sqrt(var(est_x) / sample_variance_x);
+                    initC(:,idx) = initC(:,idx) * scale;
                 end
+                gpfaObj.C = initC;
             end
             
-            % Initialize private variance R using residuals from the stimulus prediction only,
-            % scaled up by 10 because over-estimating variance early helps keep EM stable.
+            % Initialize private variance R using residuals from the stimulus prediction only
             if ~any(strcmp('R', gpfaObj.fixed))
-                gpfaObj.R = 10 * nanvar(residuals, [], 1)' + 1e-6;
+                gpfaObj.R = max(nanvar(residuals, [], 1)', 1e-3);
             end
         end
         

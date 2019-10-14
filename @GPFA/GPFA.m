@@ -401,7 +401,7 @@ classdef GPFA
                     % Analytic sample variance, i.e. E[(x_t - <x>)^2/T]
                     sample_variance_x = (sum(diag(covK))+(1/gpfaObj.T^2-1/gpfaObj.T)*sum(covK(:)))/gpfaObj.T;
                     scale = sqrt(var(est_x) / sample_variance_x);
-                    initC(:,idx) = initC(:,idx) * scale;
+                    initC(:,idx) = gather(initC(:,idx) * scale);
                 end
                 gpfaObj.C = initC;
             end

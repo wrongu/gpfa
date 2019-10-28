@@ -35,6 +35,8 @@ classdef GPFA
         lr    % learning rate for gradient-based updates
         lr_decay  % half-life of learning rate for simulated annealing
         useGPU % flag indicating whether to use GPU accelration on matrix operations
+        %% --- User-defined metadata ---
+        metadata % arbitrary user-defined struct
     end
     
     properties%(Access = protected)
@@ -130,6 +132,10 @@ classdef GPFA
             
             % Up front, compute mask of where 'missing' data are
             missing_data = isnan(gpfaObj.Y);
+            
+            %% Init empty metadata
+            
+            if isempty(gpfaObj.metadata), gpfaObj.metadata = struct(); end
             
             %% Store and check matrix size consistency
             if isempty(gpfaObj.T), gpfaObj.T = size(gpfaObj.Y, 1); end
